@@ -17,12 +17,12 @@ pub trait Reader {
     fn supports(&self) -> &str;
 }
 
-struct CompositeReader {
+pub struct CompositeReader {
     reader_map: HashMap<String, Box<dyn Reader>>,
 }
 
 impl CompositeReader {
-    fn new() -> Self {
+    pub fn new() -> Self {
         let readers: Vec<Box<dyn Reader>> = vec![Box::new(TxtReader)];
         let mut reader_map: HashMap<String, Box<dyn Reader>> = HashMap::new();
         for reader in readers {
@@ -34,7 +34,7 @@ impl CompositeReader {
         CompositeReader { reader_map }
     }
 
-    fn read<'a>(&self, file_path: &'a Path) -> Result<Vec<Item<'a>>, Box<dyn std::error::Error>> {
+    pub fn read<'a>(&self, file_path: &'a Path) -> Result<Vec<Item<'a>>, Box<dyn std::error::Error>> {
         if let Some(extension) = file_path.extension() {
             if let Some(ext_str) = extension.to_str() {
                 if let Some(reader) = self.reader_map.get(ext_str) {

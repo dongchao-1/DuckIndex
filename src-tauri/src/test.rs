@@ -1,20 +1,31 @@
 #[cfg(test)]
-mod test{
-    use std::borrow::Cow;
-    use std::path::{Path, PathBuf};
-
+pub mod test{
     use tempfile::tempdir;
-    use crate::indexer::Indexer;
-    use crate::reader::Item;
+    use crate::config::AppConfig;
+    use crate::CONFIG;
 
-    pub fn init() {
-        let temp_dir = tempdir().unwrap();
-        let _ = Indexer::init_indexer(temp_dir.path());
-        let indexer = Indexer::get_indexer(temp_dir.path()).unwrap();
-        let items = vec![
-            Item { file: Cow::Owned(PathBuf::from("./path/to/file/english_part.txt")), page: 0, line: 1, content: "Hello, world!".into() },
-            Item { file: Cow::Owned(PathBuf::from("./path/to/file/english_part.txt")), page: 0, line: 2, content: "This is a test.".into() },
-        ];
-        indexer.write_items(Path::new("./path/to/file/english_part.txt"), items).unwrap();
+    pub struct TestEnv {
+        temp_dir: tempfile::TempDir,
+    }
+
+    impl TestEnv {
+        pub fn new() -> Self {
+            let temp_dir = tempdir().unwrap();
+
+            let config = AppConfig {
+                data_path: vec![String::from("../test_data")],
+                index_path: temp_dir.path().to_string_lossy().to_string(),
+            };
+            CONFIG.set(config).unwrap();
+
+            TestEnv { temp_dir }
+        }
+    }
+
+    impl Drop for TestEnv {
+        fn drop(&mut self) {
+            // 这里会自动清理 temp_dir
+            // 因为 TempDir 实现了 Drop，会自动删除临时目录
+        }
     }
 }

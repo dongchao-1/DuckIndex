@@ -9,3 +9,5 @@ This template should help get you started developing with Vue 3 and TypeScript i
 ## setup
 pnpm install
 pnpm tauri dev
+
+cargo nextest run

@@ -3,7 +3,12 @@ use tauri::Emitter;
 use tauri::Manager;
 use std::fs;
 use std::path::Path;
+use once_cell::sync::OnceCell;
 
+use crate::config::AppConfig;
+use crate::indexer::Indexer;
+
+mod config;
 mod reader;
 mod indexer;
 mod test;
@@ -12,6 +17,8 @@ mod test;
 fn greet(name: &str) -> String {
     format!("Hello, {}! You've been greeted from Rust!", name)
 }
+
+pub static CONFIG: OnceCell<AppConfig> = OnceCell::new();
 
 fn setup_index_task(window: tauri::WebviewWindow) {
     std::thread::spawn(move || {
@@ -24,20 +31,33 @@ fn setup_index_task(window: tauri::WebviewWindow) {
     });
 }
 
-const FILE_PATH: &str = "./test_data";
-
 #[tauri::command]
-fn index_all_files(path: &Path) {
-
+fn index_all_files() {
+    Indexer::reset_indexer().unwrap();
+    let data_paths = CONFIG.get().unwrap().data_path.clone();
+    for data_path in &data_paths {
+        let path = Path::new(data_path);
+        if path.exists() {
+            index_dir(path).unwrap();
+        } else {
+            eprintln!("Path does not exist: {}", data_path);
+        }
+    }
 }
 
 fn index_dir(path:&Path) -> Result<(), Box<dyn std::error::Error>> {
+    let reader = reader::CompositeReader::new();
+    let indexer = Indexer::get_indexer()?;
+
     let entries = fs::read_dir(path)?;
     for entry in entries {
         let entry = entry?;
         let file_type = entry.file_type().unwrap();
         if file_type.is_file() {
             // 处理文件
+            let file = entry.path();
+            let items = reader.read(&file)?;
+            indexer.write_items(&file, items);
         } else if file_type.is_dir() {
             // 递归处理子目录
             index_dir(&entry.path())?;
@@ -50,6 +70,8 @@ fn index_dir(path:&Path) -> Result<(), Box<dyn std::error::Error>> {
 pub fn run() {
     tauri::Builder::default()
         .setup(|app| {
+                CONFIG.set(AppConfig::load(app.handle())?).unwrap();
+
                 let window = app.get_webview_window("main").unwrap();
                 setup_index_task(window);
                 Ok(())

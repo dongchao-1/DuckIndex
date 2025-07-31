@@ -6,28 +6,38 @@ use tantivy::collector::TopDocs;
 use tantivy::query::QueryParser;
 use tantivy::schema::*;
 use tantivy::{doc, Index, IndexWriter, ReloadPolicy};
-use lazy_static::lazy_static;
+use once_cell::sync::Lazy;
 
 use crate::reader::Item;
+use crate::CONFIG;
 
-lazy_static! {
-    pub static ref TANTIVY_SCHEMA: Schema = {
-        let mut schema_builder = Schema::builder();
-        schema_builder.add_text_field("path", TEXT | STORED);
-        schema_builder.add_text_field("filename", TEXT | STORED);
-        schema_builder.add_u64_field("page", STORED);
-        schema_builder.add_u64_field("line", STORED);
-        schema_builder.add_text_field("content", TEXT | STORED);
-        schema_builder.build()
-    };
+// 全局 Schema 实例
+pub static TANTIVY_SCHEMA: Lazy<Schema> = Lazy::new(|| {
+    let mut schema_builder = Schema::builder();
+    schema_builder.add_text_field("path", TEXT | STORED);
+    schema_builder.add_text_field("filename", TEXT | STORED);
+    schema_builder.add_u64_field("page", STORED);
+    schema_builder.add_u64_field("line", STORED);
+    schema_builder.add_text_field("content", TEXT | STORED);
+    schema_builder.build()
+});
 
-    pub static ref PATH_FIELD: Field = TANTIVY_SCHEMA.get_field("path").unwrap();
-    pub static ref FILENAME_FIELD: Field = TANTIVY_SCHEMA.get_field("filename").unwrap();
-    pub static ref PAGE_FIELD: Field = TANTIVY_SCHEMA.get_field("page").unwrap();
-    pub static ref LINE_FIELD: Field = TANTIVY_SCHEMA.get_field("line").unwrap();
-    pub static ref CONTENT_FIELD: Field = TANTIVY_SCHEMA.get_field("content").unwrap();
-
-}
+// 提取字段
+pub static PATH_FIELD: Lazy<Field> = Lazy::new(|| {
+    TANTIVY_SCHEMA.get_field("path").unwrap()
+});
+pub static FILENAME_FIELD: Lazy<Field> = Lazy::new(|| {
+    TANTIVY_SCHEMA.get_field("filename").unwrap()
+});
+pub static PAGE_FIELD: Lazy<Field> = Lazy::new(|| {
+    TANTIVY_SCHEMA.get_field("page").unwrap()
+});
+pub static LINE_FIELD: Lazy<Field> = Lazy::new(|| {
+    TANTIVY_SCHEMA.get_field("line").unwrap()
+});
+pub static CONTENT_FIELD: Lazy<Field> = Lazy::new(|| {
+    TANTIVY_SCHEMA.get_field("content").unwrap()
+});
 
 pub struct Indexer {
     index: Index,
@@ -35,14 +45,28 @@ pub struct Indexer {
 
 impl Indexer {
 
-    pub fn init_indexer(path: &Path) -> Result<Indexer, Box<dyn std::error::Error>> {
-        let mut schema_builder = Schema::builder();
-        let index = Index::create_in_dir(path, TANTIVY_SCHEMA.clone())?;
+    fn get_index_path() -> PathBuf {
+        PathBuf::from(CONFIG.get().unwrap().index_path.clone())
+    }
+    
+    pub fn init_indexer() -> Result<Indexer, Box<dyn std::error::Error>> {
+        let index_path = Self::get_index_path();
+        let index = Index::create_in_dir(index_path, TANTIVY_SCHEMA.clone())?;
         Ok(Indexer { index })
     }
 
-    pub fn get_indexer(path: &Path) -> Result<Indexer, Box<dyn std::error::Error>> {
-        Ok(Indexer { index: Index::open_in_dir(path)? })
+    pub fn reset_indexer() -> Result<(), Box<dyn std::error::Error>> {
+        let index_path = Self::get_index_path();
+        if index_path.exists() {
+            std::fs::remove_dir_all(index_path)?;
+        }
+        Self::init_indexer()?;
+        Ok(())
+    }
+    
+    pub fn get_indexer() -> Result<Indexer, Box<dyn std::error::Error>> {
+        let index_path = Self::get_index_path();
+        Ok(Indexer { index: Index::open_in_dir(index_path)? })
     }
 
     pub fn write_items(&self, file: &Path, items: Vec<Item>) -> Result<(), Box<dyn std::error::Error>> {
@@ -99,27 +123,28 @@ impl Indexer {
 mod tests {
     use super::*;
     use tempfile::tempdir;
+    use crate::test::test::TestEnv;
 
     #[test]
     fn test_init_index() {
-        let temp_dir = tempdir().unwrap();
-        let indexer = Indexer::init_indexer(temp_dir.path()).unwrap();
+        let _env = TestEnv::new();
+        let indexer = Indexer::init_indexer().unwrap();
         assert_eq!(indexer.index.schema().fields().count(), 5);
     }
 
     #[test]
     fn test_get_index() {
-        let temp_dir = tempdir().unwrap();
-        let indexer = Indexer::init_indexer(temp_dir.path()).unwrap();
-        let opened_indexer = Indexer::get_indexer(temp_dir.path()).unwrap();
+        let _env = TestEnv::new();
+        let indexer = Indexer::init_indexer().unwrap();
+        let opened_indexer = Indexer::get_indexer().unwrap();
         assert_eq!(indexer.index.schema(), opened_indexer.index.schema());
     }
 
     #[test]
     fn test_write_items() {
-        let temp_dir = tempdir().unwrap();
-        let _ = Indexer::init_indexer(temp_dir.path());
-        let indexer = Indexer::get_indexer(temp_dir.path()).unwrap();
+        let _env = TestEnv::new();
+        let _ = Indexer::init_indexer();
+        let indexer = Indexer::get_indexer().unwrap();
         let items = vec![
             Item { file: Cow::Owned(PathBuf::from("./path/to/file/english_part.txt")), page: 0, line: 1, content: "Hello, world!".into() },
             Item { file: Cow::Owned(PathBuf::from("./path/to/file/english_part.txt")), page: 0, line: 2, content: "This is a test.".into() },
@@ -130,9 +155,9 @@ mod tests {
 
     #[test]
     fn test_search_items() {
-        let temp_dir = tempdir().unwrap();
-        let _ = Indexer::init_indexer(temp_dir.path());
-        let indexer = Indexer::get_indexer(temp_dir.path()).unwrap();
+        let _env = TestEnv::new();
+        let _ = Indexer::init_indexer();
+        let indexer = Indexer::get_indexer().unwrap();
         let items = vec![
             Item { file: Cow::Owned(PathBuf::from("./path/to/file/english_part.txt")), page: 0, line: 1, content: "Hello, world!".into() },
             Item { file: Cow::Owned(PathBuf::from("./path/to/file/english_part.txt")), page: 0, line: 2, content: "This is a test.".into() },
