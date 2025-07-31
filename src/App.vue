@@ -1,6 +1,16 @@
 <script setup lang="ts">
 import { ref } from "vue";
 import { invoke } from "@tauri-apps/api/core";
+import { Window } from '@tauri-apps/api/window';
+
+console.log('Tauri and Vue are ready!');
+
+const mainWindow = new Window('main');
+console.log('Main window:', mainWindow);
+
+mainWindow.listen("index-task-update", ({ event, payload }: { event: string; payload: unknown }) => { 
+  console.log('收到索引任务更新:', event, payload);
+});
 
 const greetMsg = ref("");
 const name = ref("");
@@ -13,7 +23,7 @@ async function greet() {
 
 <template>
   <main class="container">
-    <h1>Welcome to Tauri + Vue</h1>
+    <!-- <h1>Welcome to Tauri + Vue</h1>
 
     <div class="row">
       <a href="https://vite.dev" target="_blank">
@@ -26,8 +36,9 @@ async function greet() {
         <img src="./assets/vue.svg" class="logo vue" alt="Vue logo" />
       </a>
     </div>
-    <p>Click on the Tauri, Vite, and Vue logos to learn more.</p>
+    <p>Click on the Tauri, Vite, and Vue logos to learn more.</p> -->
 
+    
     <form class="row" @submit.prevent="greet">
       <input id="greet-input" v-model="name" placeholder="Enter a name..." />
       <button type="submit">Greet</button>

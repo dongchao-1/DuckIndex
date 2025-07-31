@@ -1,0 +1,4 @@
+中文文本
+这是一个中文文本。
+Hello, world!
+This is a test.
