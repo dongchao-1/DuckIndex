@@ -51,7 +51,10 @@ impl Indexer {
     
     pub fn init_indexer() -> Result<Indexer, Box<dyn std::error::Error>> {
         let index_path = Self::get_index_path();
-        let index = Index::create_in_dir(index_path, TANTIVY_SCHEMA.clone())?;
+        if !index_path.exists() {
+            std::fs::create_dir_all(&index_path)?;
+        }
+        let index = Index::create_in_dir(&index_path, TANTIVY_SCHEMA.clone())?;
         Ok(Indexer { index })
     }
 
@@ -122,7 +125,6 @@ impl Indexer {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::tempdir;
     use crate::test::test::TestEnv;
 
     #[test]

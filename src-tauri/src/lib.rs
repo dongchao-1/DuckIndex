@@ -7,6 +7,7 @@ use once_cell::sync::OnceCell;
 
 use crate::config::AppConfig;
 use crate::indexer::Indexer;
+use crate::reader::Item;
 
 mod config;
 mod reader;
@@ -32,7 +33,7 @@ fn setup_index_task(window: tauri::WebviewWindow) {
 }
 
 #[tauri::command]
-fn index_all_files() {
+fn index_all_files() -> String {
     Indexer::reset_indexer().unwrap();
     let data_paths = CONFIG.get().unwrap().data_path.clone();
     for data_path in &data_paths {
@@ -43,6 +44,15 @@ fn index_all_files() {
             eprintln!("Path does not exist: {}", data_path);
         }
     }
+    "索引已重建".to_string()
+}
+
+
+#[tauri::command]
+fn search(query: &str) -> String {
+    let indexer = Indexer::get_indexer().unwrap();
+    let results = indexer.search(query, 10).unwrap();
+    format!("Found {} results: {:?}", results.len(), results)
 }
 
 fn index_dir(path:&Path) -> Result<(), Box<dyn std::error::Error>> {
@@ -57,7 +67,7 @@ fn index_dir(path:&Path) -> Result<(), Box<dyn std::error::Error>> {
             // 处理文件
             let file = entry.path();
             let items = reader.read(&file)?;
-            indexer.write_items(&file, items);
+            indexer.write_items(&file, items).unwrap();
         } else if file_type.is_dir() {
             // 递归处理子目录
             index_dir(&entry.path())?;
@@ -77,7 +87,24 @@ pub fn run() {
                 Ok(())
             })
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![greet, index_all_files])
+        .invoke_handler(tauri::generate_handler![search, index_all_files])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
+
+
+// #[cfg(test)]
+// mod tests {
+//     use super::*;
+//     use crate::test::test::TestEnv;
+
+//     #[test]
+//     fn test_index_all_files() {
+//         let _env = TestEnv::new();
+//         index_all_files();
+//         let indexer = Indexer::get_indexer().unwrap();
+//         let result = indexer.search("is", 10).unwrap();
+//         assert_eq!(result.len(), 1);
+//     }
+
+// }

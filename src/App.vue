@@ -15,10 +15,14 @@ mainWindow.listen("index-task-update", ({ event, payload }: { event: string; pay
 const greetMsg = ref("");
 const name = ref("");
 
-async function greet() {
-  // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-  greetMsg.value = await invoke("greet", { name: name.value });
+async function search() {
+  greetMsg.value = await invoke("search", { query: name.value });
 }
+
+async function index_all_files() {
+  greetMsg.value = await invoke("index_all_files", {});
+}
+
 </script>
 
 <template>
@@ -39,10 +43,17 @@ async function greet() {
     <p>Click on the Tauri, Vite, and Vue logos to learn more.</p> -->
 
     
-    <form class="row" @submit.prevent="greet">
-      <input id="greet-input" v-model="name" placeholder="Enter a name..." />
-      <button type="submit">Greet</button>
+
+    <form class="row" @submit.prevent="index_all_files">
+      <button type="submit">重建所有索引</button>
     </form>
+
+    
+    <form class="row" @submit.prevent="search">
+      <input id="search-input" v-model="name" placeholder="Enter a text..." />
+      <button type="submit">搜索</button>
+    </form>
+
     <p>{{ greetMsg }}</p>
   </main>
 </template>
