@@ -6,6 +6,7 @@ use tantivy::collector::TopDocs;
 use tantivy::query::QueryParser;
 use tantivy::schema::*;
 use tantivy::{doc, Index, IndexWriter, ReloadPolicy};
+use tantivy::schema::Schema;
 use once_cell::sync::Lazy;
 
 use crate::reader::Item;
@@ -13,12 +14,19 @@ use crate::CONFIG;
 
 // 全局 Schema 实例
 pub static TANTIVY_SCHEMA: Lazy<Schema> = Lazy::new(|| {
+    let jieba_text = TextOptions::default()
+            .set_indexing_options(
+                TextFieldIndexing::default()
+                    .set_tokenizer("jieba")
+                    .set_index_option(IndexRecordOption::WithFreqsAndPositions),
+            )
+            .set_stored();
     let mut schema_builder = Schema::builder();
-    schema_builder.add_text_field("path", TEXT | STORED);
-    schema_builder.add_text_field("filename", TEXT | STORED);
+    schema_builder.add_text_field("path", jieba_text.clone() | STORED);
+    schema_builder.add_text_field("filename", jieba_text.clone() | STORED);
     schema_builder.add_u64_field("page", STORED);
     schema_builder.add_u64_field("line", STORED);
-    schema_builder.add_text_field("content", TEXT | STORED);
+    schema_builder.add_text_field("content", jieba_text.clone() | STORED);
     schema_builder.build()
 });
 
@@ -49,13 +57,13 @@ impl Indexer {
         PathBuf::from(CONFIG.get().unwrap().index_path.clone())
     }
     
-    pub fn init_indexer() -> Result<Indexer, Box<dyn std::error::Error>> {
+    pub fn init_indexer() -> Result<(), Box<dyn std::error::Error>> {
         let index_path = Self::get_index_path();
         if !index_path.exists() {
             std::fs::create_dir_all(&index_path)?;
         }
-        let index = Index::create_in_dir(&index_path, TANTIVY_SCHEMA.clone())?;
-        Ok(Indexer { index })
+        let _ = Index::create_in_dir(&index_path, TANTIVY_SCHEMA.clone())?;
+        Ok(())
     }
 
     pub fn reset_indexer() -> Result<(), Box<dyn std::error::Error>> {
@@ -69,7 +77,10 @@ impl Indexer {
     
     pub fn get_indexer() -> Result<Indexer, Box<dyn std::error::Error>> {
         let index_path = Self::get_index_path();
-        Ok(Indexer { index: Index::open_in_dir(index_path)? })
+        let tokenizer = tantivy_jieba::JiebaTokenizer {};
+        let index = Index::open_in_dir(index_path)?;
+        index.tokenizers().register("jieba", tokenizer);
+        Ok(Indexer { index })
     }
 
     pub fn write_items(&self, file: &Path, items: Vec<Item>) -> Result<(), Box<dyn std::error::Error>> {
@@ -130,16 +141,16 @@ mod tests {
     #[test]
     fn test_init_index() {
         let _env = TestEnv::new();
-        let indexer = Indexer::init_indexer().unwrap();
-        assert_eq!(indexer.index.schema().fields().count(), 5);
+        Indexer::init_indexer().unwrap();
+        // assert_eq!(indexer.index.schema().fields().count(), 5);
     }
 
     #[test]
     fn test_get_index() {
         let _env = TestEnv::new();
-        let indexer = Indexer::init_indexer().unwrap();
+        Indexer::init_indexer().unwrap();
         let opened_indexer = Indexer::get_indexer().unwrap();
-        assert_eq!(indexer.index.schema(), opened_indexer.index.schema());
+        assert_eq!(opened_indexer.index.schema().fields().count(), 5);
     }
 
     #[test]
@@ -168,6 +179,26 @@ mod tests {
         let result = indexer.search("is", 10).unwrap();
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].content, "This is a test.");
+        // println!("Search result: {:?}", result);
+    }
+
+    #[test]
+    fn test_search_chinese_items() {
+        let _env = TestEnv::new();
+        let _ = Indexer::init_indexer();
+        let indexer = Indexer::get_indexer().unwrap();
+        let items = vec![
+            Item { file: Cow::Owned(PathBuf::from("./path/to/file/chinese_part.txt")), page: 0, line: 1, content: "你好，世界！".into() },
+            Item { file: Cow::Owned(PathBuf::from("./path/to/file/chinese_part.txt")), page: 0, line: 2, content: "这是一项测试。".into() },
+        ];
+        indexer.write_items(Path::new("./path/to/file/chinese_part.txt"), items).unwrap();
+        let result = indexer.search("世界", 10).unwrap();
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].content, "你好，世界！");
+
+        let result = indexer.search("测试", 10).unwrap();
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].content, "这是一项测试。");
         // println!("Search result: {:?}", result);
     }
 }
