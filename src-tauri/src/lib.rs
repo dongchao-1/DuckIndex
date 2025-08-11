@@ -51,7 +51,7 @@ fn index_all_files() -> String {
 #[tauri::command]
 fn search(query: &str) -> String {
     let indexer = Indexer::get_indexer().unwrap();
-    let results = indexer.search(query, 10).unwrap();
+    let results = indexer.search(query, 10, true).unwrap();
     format!("Found {} results: {:?}", results.len(), results)
 }
 
