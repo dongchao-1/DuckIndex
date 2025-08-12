@@ -7,6 +7,7 @@ use tempfile::TempDir;
 use zip::ZipArchive;
 use quick_xml::events::Event as quickXmlEvent;
 use quick_xml::Reader as quickXmlReader;
+use lopdf::{Document as pdfDocument, Object as pdfObject};
 
 #[derive(Debug)]
 pub struct Item<'a> {
@@ -145,6 +146,53 @@ impl DocxReader {
 }
 
 
+struct PdfReader;
+impl Reader for PdfReader {
+    fn read<'a>(&self, file_path: &'a Path) -> Result<Vec<Item<'a>>, Box<dyn std::error::Error>> {
+        let mut items = vec![];
+        let doc = pdfDocument::load(file_path)?;
+        let mut text = String::new();
+
+        for page_num in 1..=doc.get_pages().len() {
+            match doc.extract_text(&[page_num.try_into().unwrap()]) {
+                Ok(page_text) => {
+                    println!("page_text: {}", page_text);
+                    text.push_str(&page_text.strip_suffix("\n").unwrap());
+                }
+                Err(_) => {
+                    // You may want to handle the error, log it, or skip the page
+                    continue;
+                }
+            }
+        }
+        let lines = text.lines().collect::<Vec<_>>();
+        let mut result = String::new();
+
+        for (i, line) in lines.iter().enumerate() {
+            result.push_str(line);
+            if i < lines.len() - 1 { // 不是最后一行
+                if line.chars().last().map_or(false, |c| c.is_ascii_alphabetic()) {
+                    result.push(' '); // 英文行尾加空格
+                }
+            }
+        }
+
+        // println!("Extracted text: {}", text);
+        // println!("result: {}", result);
+        items.push(Item {
+            file: Cow::Borrowed(file_path),
+            page: 0,
+            line: 1,
+            content: result,
+        });
+        Ok(items)
+    }
+
+    fn supports(&self) -> &str {
+        "pdf"
+    }
+}
+
 
 #[cfg(test)]
 mod tests {
@@ -179,6 +227,15 @@ mod tests {
         let items = reader.read(Path::new("../test_data/test.docx")).unwrap();
         // println!("Items: {:?}", items);
         assert_eq!(items.len(), 10);
+    }
+
+    #[test]
+    fn test_pdf_reader() {
+        let reader = PdfReader;
+        assert_eq!(reader.supports(), "pdf");
+        let items = reader.read(Path::new("../test_data/test.pdf")).unwrap();
+        // println!("Items: {:?}", items);
+        assert_eq!(items.len(), 1);
     }
 }
 
