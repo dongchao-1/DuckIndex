@@ -1,4 +1,5 @@
-use std::{borrow::Cow, path::Path};
+use std::sync::Arc;
+use std::path::Path;
 use std::collections::HashMap;
 use std::{fs, vec};
 use std::fs::File;
@@ -10,39 +11,42 @@ use quick_xml::Reader as quickXmlReader;
 use lopdf::Document as pdfDocument;
 
 #[derive(Debug)]
-pub struct Item<'a> {
-    pub file: Cow<'a, Path>,
+pub struct Item {
     pub page: u64,
     pub line: u64,
     pub content: String,
 }
 
 pub trait Reader {
-    fn read<'a>(&self, file_path: &'a Path) -> Result<Vec<Item<'a>>, Box<dyn std::error::Error>>;
-    fn supports(&self) -> &str;
+    fn read(&self, file_path: &Path) -> Result<Vec<Item>, Box<dyn std::error::Error>>;
+    fn supports(&self) -> Vec<&str>;
 }
 
 pub struct CompositeReader {
-    reader_map: HashMap<String, Box<dyn Reader>>,
+    reader_map: HashMap<String, Arc<dyn Reader>>,
 }
 
 impl CompositeReader {
     pub fn new() -> Self {
-        let readers: Vec<Box<dyn Reader>> = vec![Box::new(TxtReader), Box::new(DocxReader), Box::new(PdfReader), Box::new(PptxReader)];
-        let mut reader_map: HashMap<String, Box<dyn Reader>> = HashMap::new();
+        let readers: Vec<Arc<dyn Reader>> = vec![Arc::new(TxtReader), Arc::new(DocxReader), Arc::new(PdfReader), Arc::new(PptxReader)];
+        let mut reader_map: HashMap<String, Arc<dyn Reader>> = HashMap::new();
         for reader in readers {
-            reader_map.insert(
-                reader.supports().to_string(),
-                reader,
-            );
+            for ext in reader.supports() {
+                reader_map.insert(ext.to_string(), reader.clone());
+            }
         }
         CompositeReader { reader_map }
     }
 
-    pub fn read<'a>(&self, file_path: &'a Path) -> Result<Vec<Item<'a>>, Box<dyn std::error::Error>> {
+    pub fn supports(&self) -> Vec<String> {
+        self.reader_map.keys().cloned().collect()
+    }
+    
+    pub fn read(&self, file_path: &Path) -> Result<Vec<Item>, Box<dyn std::error::Error>> {
         if let Some(extension) = file_path.extension() {
             if let Some(ext_str) = extension.to_str() {
-                if let Some(reader) = self.reader_map.get(ext_str) {
+                let ext_str = ext_str.to_lowercase();
+                if let Some(reader) = self.reader_map.get(&ext_str) {
                     return reader.read(file_path);
                 }
             }
@@ -53,7 +57,7 @@ impl CompositeReader {
 
 struct TxtReader;
 impl Reader for TxtReader {
-    fn read<'a>(&self, file_path: &'a Path) -> Result<Vec<Item<'a>>, Box<dyn std::error::Error>> {
+    fn read(&self, file_path: &Path) -> Result<Vec<Item>, Box<dyn std::error::Error>> {
         let file = File::open(file_path)?;
         let reader = BufReader::new(file);
         let mut items = vec![];
@@ -61,7 +65,6 @@ impl Reader for TxtReader {
         for (line_number, line) in reader.lines().enumerate() {
             let line = line?;
             items.push(Item {
-                file: Cow::Borrowed(file_path),
                 page: 0,
                 line: line_number as u64 + 1,
                 content: line,
@@ -70,15 +73,15 @@ impl Reader for TxtReader {
         Ok(items)
     }
 
-    fn supports(&self) -> &str {
-        "txt"
+    fn supports(&self) -> Vec<&str> {
+        vec!["txt", "md", "markdown"]
     }
 }
 
 
 struct DocxReader;
 impl Reader for DocxReader {
-    fn read<'a>(&self, file_path: &'a Path) -> Result<Vec<Item<'a>>, Box<dyn std::error::Error>> {
+    fn read(&self, file_path: &Path) -> Result<Vec<Item>, Box<dyn std::error::Error>> {
         let temp_dir = TempDir::new()?;
         let file = File::open(file_path)?;
         let mut archive = ZipArchive::new(file)?;
@@ -98,7 +101,7 @@ impl Reader for DocxReader {
         loop {
             match xml_reader.read_event_into(&mut buf)? {
                 quickXmlEvent::Start(e) if e.name().as_ref() == b"w:p" => {
-                    if let Some(item) = self.create_item(file_path, &mut txt, &mut line) {
+                    if let Some(item) = self.create_item(&mut txt, &mut line) {
                         items.push(item);
                     }
                 }
@@ -106,7 +109,7 @@ impl Reader for DocxReader {
                     txt.push_str(&e.decode()?);
                 }
                 quickXmlEvent::Eof => {
-                    if let Some(item) = self.create_item(file_path, &mut txt, &mut line) {
+                    if let Some(item) = self.create_item(&mut txt, &mut line) {
                         items.push(item);
                     }
                     break;
@@ -119,20 +122,19 @@ impl Reader for DocxReader {
         Ok(items)
     }
 
-    fn supports(&self) -> &str {
-        "docx"
+    fn supports(&self) -> Vec<&str> {
+        vec!["docx"]
     }
 }
 
 impl DocxReader {
-    fn create_item<'a>(&self, file_path: &'a Path, txt: &mut String, line: &mut u32) -> Option<Item<'a>> {
+    fn create_item(&self, txt: &mut String, line: &mut u32) -> Option<Item> {
         let item = if !txt.trim().is_empty() {
             let txt_ret = txt.trim().to_string();
             txt.clear();
             let line_ret = *line;
             *line += 1;
             Some(Item {
-                file: Cow::Borrowed(file_path),
                 page: 0,
                 line: line_ret as u64,
                 content: txt_ret,
@@ -148,7 +150,7 @@ impl DocxReader {
 
 struct PptxReader;
 impl Reader for PptxReader {
-    fn read<'a>(&self, file_path: &'a Path) -> Result<Vec<Item<'a>>, Box<dyn std::error::Error>> {
+    fn read(&self, file_path: &Path) -> Result<Vec<Item>, Box<dyn std::error::Error>> {
         let temp_dir = TempDir::new()?;
         let file = File::open(file_path)?;
         let mut archive = ZipArchive::new(file)?;
@@ -176,7 +178,7 @@ impl Reader for PptxReader {
                                 loop {
                                     match xml_reader.read_event_into(&mut buf)? {
                                         quickXmlEvent::Start(e) if e.name().as_ref() == b"a:p" => {
-                                            if let Some(item) = self.create_item(file_path, &mut txt, page_number) {
+                                            if let Some(item) = self.create_item(&mut txt, page_number) {
                                                 items.push(item);
                                             }
                                         }
@@ -184,7 +186,7 @@ impl Reader for PptxReader {
                                             txt.push_str(&e.decode()?);
                                         }
                                         quickXmlEvent::Eof => {
-                                            if let Some(item) = self.create_item(file_path, &mut txt, page_number) {
+                                            if let Some(item) = self.create_item(&mut txt, page_number) {
                                                 items.push(item);
                                             }
                                             break;
@@ -202,18 +204,17 @@ impl Reader for PptxReader {
         Ok(items)
     }
 
-    fn supports(&self) -> &str {
-        "pptx"
+    fn supports(&self) -> Vec<&str> {
+        vec!["pptx"]
     }
 }
 
 impl PptxReader {
-    fn create_item<'a>(&self, file_path: &'a Path, txt: &mut String, page: u64) -> Option<Item<'a>> {
+    fn create_item(&self, txt: &mut String, page: u64) -> Option<Item> {
         let item = if !txt.trim().is_empty() {
             let txt_ret = txt.trim().to_string();
             txt.clear();
             Some(Item {
-                file: Cow::Borrowed(file_path),
                 page: page,
                 line: 0,
                 content: txt_ret,
@@ -229,7 +230,7 @@ impl PptxReader {
 
 struct PdfReader;
 impl Reader for PdfReader {
-    fn read<'a>(&self, file_path: &'a Path) -> Result<Vec<Item<'a>>, Box<dyn std::error::Error>> {
+    fn read(&self, file_path: &Path) -> Result<Vec<Item>, Box<dyn std::error::Error>> {
         let mut items = vec![];
         let doc = pdfDocument::load(file_path)?;
         let mut text = String::new();
@@ -261,16 +262,15 @@ impl Reader for PdfReader {
         // println!("Extracted text: {}", text);
         // println!("result: {}", result);
         items.push(Item {
-            file: Cow::Borrowed(file_path),
             page: 0,
-            line: 1,
+            line: 0,
             content: result,
         });
         Ok(items)
     }
 
-    fn supports(&self) -> &str {
-        "pdf"
+    fn supports(&self) -> Vec<&str> {
+        vec!["pdf"]
     }
 }
 
@@ -296,7 +296,7 @@ mod tests {
     #[test]
     fn test_txt_reader() {
         let reader = TxtReader;
-        assert_eq!(reader.supports(), "txt");
+        assert_eq!(reader.supports(), vec!["txt", "md", "markdown"]);
         let items = reader.read(Path::new("../test_data/1.txt")).unwrap();
         assert_eq!(items.len(), 4);
     }
@@ -304,7 +304,7 @@ mod tests {
     #[test]
     fn test_docx_reader() {
         let reader = DocxReader;
-        assert_eq!(reader.supports(), "docx");
+        assert_eq!(reader.supports(), vec!["docx"]);
         let items = reader.read(Path::new("../test_data/test.docx")).unwrap();
         // println!("Items: {:?}", items);
         assert_eq!(items.len(), 10);
@@ -313,7 +313,7 @@ mod tests {
     #[test]
     fn test_pptx_reader() {
         let reader = PptxReader;
-        assert_eq!(reader.supports(), "pptx");
+        assert_eq!(reader.supports(), vec!["pptx"]);
         let items = reader.read(Path::new("../test_data/test.pptx")).unwrap();
         // println!("Items: {:?}", items);
         assert_eq!(items.len(), 5);
@@ -322,7 +322,7 @@ mod tests {
     #[test]
     fn test_pdf_reader() {
         let reader = PdfReader;
-        assert_eq!(reader.supports(), "pdf");
+        assert_eq!(reader.supports(), vec!["pdf"]);
         let items = reader.read(Path::new("../test_data/test.pdf")).unwrap();
         // println!("Items: {:?}", items);
         assert_eq!(items.len(), 1);

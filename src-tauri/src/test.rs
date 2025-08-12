@@ -5,6 +5,7 @@ pub mod test{
     use crate::CONFIG;
 
     pub struct TestEnv {
+        #[allow(dead_code)]
         temp_dir: tempfile::TempDir,
     }
 

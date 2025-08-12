@@ -1,13 +1,11 @@
 
-use std::borrow::Cow;
 use std::path::{Path, PathBuf};
 
 use tantivy::collector::TopDocs;
 use tantivy::query::QueryParser;
 use tantivy::schema::*;
-use tantivy::tokenizer::*;
 use tantivy::{doc, Index, IndexWriter, ReloadPolicy};
-use tantivy::query::{BooleanQuery, Occur, TermQuery, RegexQuery};
+use tantivy::query::{BooleanQuery, Occur, RegexQuery};
 use tantivy::schema::Schema;
 use once_cell::sync::Lazy;
 
@@ -139,7 +137,6 @@ impl Indexer {
             file.push(filename_str);
 
             results.push(Item {
-                file: Cow::Owned(file),
                 page: retrieved_doc.get_first(PAGE_FIELD.clone()).unwrap().as_u64().unwrap(),
                 line: retrieved_doc.get_first(LINE_FIELD.clone()).unwrap().as_u64().unwrap(),
                 content: retrieved_doc.get_first(CONTENT_FIELD.clone()).unwrap().as_str().unwrap().to_string(),
@@ -176,8 +173,8 @@ mod tests {
         let _ = Indexer::init_indexer();
         let indexer = Indexer::get_indexer().unwrap();
         let items = vec![
-            Item { file: Cow::Owned(PathBuf::from("./path/to/file/english_part.txt")), page: 0, line: 1, content: "Hello, world!".into() },
-            Item { file: Cow::Owned(PathBuf::from("./path/to/file/english_part.txt")), page: 0, line: 2, content: "This is a test.".into() },
+            Item { page: 0, line: 1, content: "Hello, world!".into() },
+            Item { page: 0, line: 2, content: "This is a test.".into() },
         ];
         indexer.write_items(Path::new("./path/to/file/english_part.txt"), items).unwrap();
     }
@@ -189,8 +186,8 @@ mod tests {
         let _ = Indexer::init_indexer();
         let indexer = Indexer::get_indexer().unwrap();
         let items = vec![
-            Item { file: Cow::Owned(PathBuf::from("./path/to/file/english_part.txt")), page: 0, line: 1, content: "Hello, world!".into() },
-            Item { file: Cow::Owned(PathBuf::from("./path/to/file/english_part.txt")), page: 0, line: 2, content: "This is a test.".into() },
+            Item { page: 0, line: 1, content: "Hello, world!".into() },
+            Item { page: 0, line: 2, content: "This is a test.".into() },
         ];
         indexer.write_items(Path::new("./path/to/file/english_part.txt"), items).unwrap();
         let result = indexer.search("is", 10, false).unwrap();
@@ -205,8 +202,8 @@ mod tests {
         let _ = Indexer::init_indexer();
         let indexer = Indexer::get_indexer().unwrap();
         let items = vec![
-            Item { file: Cow::Owned(PathBuf::from("./path/to/file/chinese_part.txt")), page: 0, line: 1, content: "你好，世界！".into() },
-            Item { file: Cow::Owned(PathBuf::from("./path/to/file/chinese_part.txt")), page: 0, line: 2, content: "这是一项测试。".into() },
+            Item { page: 0, line: 1, content: "你好，世界！".into() },
+            Item { page: 0, line: 2, content: "这是一项测试。".into() },
         ];
         indexer.write_items(Path::new("./path/to/file/chinese_part.txt"), items).unwrap();
         let result = indexer.search("世界", 10, false).unwrap();
@@ -220,8 +217,8 @@ mod tests {
         let _ = Indexer::init_indexer();
         let indexer = Indexer::get_indexer().unwrap();
         let items = vec![
-            Item { file: Cow::Owned(PathBuf::from("./path/to/file/chinese_part.txt")), page: 0, line: 1, content: "你好，世界！".into() },
-            Item { file: Cow::Owned(PathBuf::from("./path/to/file/chinese_part.txt")), page: 0, line: 2, content: "这是一项测试。".into() },
+            Item { page: 0, line: 1, content: "你好，世界！".into() },
+            Item { page: 0, line: 2, content: "这是一项测试。".into() },
         ];
         indexer.write_items(Path::new("./path/to/file/chinese_part.txt"), items).unwrap();
 

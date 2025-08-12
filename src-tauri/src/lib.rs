@@ -7,17 +7,11 @@ use once_cell::sync::OnceCell;
 
 use crate::config::AppConfig;
 use crate::indexer::Indexer;
-use crate::reader::Item;
 
 mod config;
 mod reader;
 mod indexer;
 mod test;
-
-#[tauri::command]
-fn greet(name: &str) -> String {
-    format!("Hello, {}! You've been greeted from Rust!", name)
-}
 
 pub static CONFIG: OnceCell<AppConfig> = OnceCell::new();
 
