@@ -1,13 +1,13 @@
 use std::{borrow::Cow, path::Path};
 use std::collections::HashMap;
-use std::vec;
+use std::{fs, vec};
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 use tempfile::TempDir;
 use zip::ZipArchive;
 use quick_xml::events::Event as quickXmlEvent;
 use quick_xml::Reader as quickXmlReader;
-use lopdf::{Document as pdfDocument, Object as pdfObject};
+use lopdf::Document as pdfDocument;
 
 #[derive(Debug)]
 pub struct Item<'a> {
@@ -28,7 +28,7 @@ pub struct CompositeReader {
 
 impl CompositeReader {
     pub fn new() -> Self {
-        let readers: Vec<Box<dyn Reader>> = vec![Box::new(TxtReader), Box::new(DocxReader)];
+        let readers: Vec<Box<dyn Reader>> = vec![Box::new(TxtReader), Box::new(DocxReader), Box::new(PdfReader)];
         let mut reader_map: HashMap<String, Box<dyn Reader>> = HashMap::new();
         for reader in readers {
             reader_map.insert(
@@ -125,7 +125,7 @@ impl Reader for DocxReader {
 }
 
 impl DocxReader {
-    fn create_item<'a>(&self, file_path: &'a Path, txt: &mut String, line: &mut u64) -> Option<Item<'a>> {
+    fn create_item<'a>(&self, file_path: &'a Path, txt: &mut String, line: &mut u32) -> Option<Item<'a>> {
         let item = if !txt.trim().is_empty() {
             let txt_ret = txt.trim().to_string();
             txt.clear();
@@ -134,7 +134,88 @@ impl DocxReader {
             Some(Item {
                 file: Cow::Borrowed(file_path),
                 page: 0,
-                line: line_ret,
+                line: line_ret as u64,
+                content: txt_ret,
+            })
+        } else {
+            None
+        };
+
+        item
+    }
+}
+
+
+struct PptxReader;
+impl Reader for PptxReader {
+    fn read<'a>(&self, file_path: &'a Path) -> Result<Vec<Item<'a>>, Box<dyn std::error::Error>> {
+        let temp_dir = TempDir::new()?;
+        let file = File::open(file_path)?;
+        let mut archive = ZipArchive::new(file)?;
+        archive.extract(&temp_dir)?;
+
+        let document_path = temp_dir.path().join("ppt/slides/");
+        let mut txt = String::new();
+        let mut buf = Vec::new();
+        let mut items = vec![];
+
+        if let Ok(entries) = fs::read_dir(Path::new(&document_path)) {
+            for entry in entries {
+                if let Ok(entry) = entry {
+                    let file_name = entry.file_name();
+                    let file_name = file_name.to_string_lossy();
+
+                    if file_name.starts_with("slide") && file_name.ends_with(".xml") {
+                        if let Some(number_str) = file_name
+                            .strip_prefix("slide")
+                            .and_then(|s| s.strip_suffix(".xml")) {
+                            if let Ok(page_number) = number_str.parse::<u64>() {
+                                let reader = BufReader::new(File::open(entry.path())?);
+                                let mut xml_reader = quickXmlReader::from_reader(reader);
+
+                                loop {
+                                    match xml_reader.read_event_into(&mut buf)? {
+                                        quickXmlEvent::Start(e) if e.name().as_ref() == b"a:p" => {
+                                            if let Some(item) = self.create_item(file_path, &mut txt, page_number) {
+                                                items.push(item);
+                                            }
+                                        }
+                                        quickXmlEvent::Text(e) => {
+                                            txt.push_str(&e.decode()?);
+                                        }
+                                        quickXmlEvent::Eof => {
+                                            if let Some(item) = self.create_item(file_path, &mut txt, page_number) {
+                                                items.push(item);
+                                            }
+                                            break;
+                                        }, // 文件结束
+                                        _ => (),
+                                    }
+                                    buf.clear();
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        Ok(items)
+    }
+
+    fn supports(&self) -> &str {
+        "pptx"
+    }
+}
+
+impl PptxReader {
+    fn create_item<'a>(&self, file_path: &'a Path, txt: &mut String, page: u64) -> Option<Item<'a>> {
+        let item = if !txt.trim().is_empty() {
+            let txt_ret = txt.trim().to_string();
+            txt.clear();
+            Some(Item {
+                file: Cow::Borrowed(file_path),
+                page: page,
+                line: 0,
                 content: txt_ret,
             })
         } else {
@@ -230,6 +311,15 @@ mod tests {
     }
 
     #[test]
+    fn test_pptx_reader() {
+        let reader = PptxReader;
+        assert_eq!(reader.supports(), "pptx");
+        let items = reader.read(Path::new("../test_data/test.pptx")).unwrap();
+        // println!("Items: {:?}", items);
+        assert_eq!(items.len(), 5);
+    }
+
+    #[test]
     fn test_pdf_reader() {
         let reader = PdfReader;
         assert_eq!(reader.supports(), "pdf");
@@ -238,4 +328,3 @@ mod tests {
         assert_eq!(items.len(), 1);
     }
 }
-
