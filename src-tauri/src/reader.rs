@@ -28,7 +28,7 @@ pub struct CompositeReader {
 
 impl CompositeReader {
     pub fn new() -> Self {
-        let readers: Vec<Box<dyn Reader>> = vec![Box::new(TxtReader), Box::new(DocxReader), Box::new(PdfReader)];
+        let readers: Vec<Box<dyn Reader>> = vec![Box::new(TxtReader), Box::new(DocxReader), Box::new(PdfReader), Box::new(PptxReader)];
         let mut reader_map: HashMap<String, Box<dyn Reader>> = HashMap::new();
         for reader in readers {
             reader_map.insert(
