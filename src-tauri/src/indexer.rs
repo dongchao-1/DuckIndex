@@ -1,151 +1,241 @@
 
 use std::path::{Path, PathBuf};
 
-use tantivy::collector::TopDocs;
-use tantivy::query::QueryParser;
-use tantivy::schema::*;
-use tantivy::{doc, Index, IndexWriter, ReloadPolicy};
-use tantivy::query::{BooleanQuery, Occur, RegexQuery};
-use tantivy::schema::Schema;
-use once_cell::sync::Lazy;
+use rusqlite::{Connection, params};
 
 use crate::reader::Item;
 use crate::CONFIG;
 
-// 全局 Schema 实例
-pub static TANTIVY_SCHEMA: Lazy<Schema> = Lazy::new(|| {
-    // let jieba_text = TextOptions::default()
-    //         .set_indexing_options(
-    //             TextFieldIndexing::default()
-    //                 .set_tokenizer("jieba")
-    //                 .set_index_option(IndexRecordOption::WithFreqsAndPositions),
-    //         )
-    //         .set_stored();
-    let mut schema_builder = Schema::builder();
-    schema_builder.add_text_field("path", TEXT | STORED);
-    schema_builder.add_text_field("filename", TEXT | STORED);
-    schema_builder.add_u64_field("page", STORED);
-    schema_builder.add_u64_field("line", STORED);
-    schema_builder.add_text_field("content", TEXT | STORED);
-    schema_builder.build()
-});
 
-// 提取字段
-pub static PATH_FIELD: Lazy<Field> = Lazy::new(|| {
-    TANTIVY_SCHEMA.get_field("path").unwrap()
-});
-pub static FILENAME_FIELD: Lazy<Field> = Lazy::new(|| {
-    TANTIVY_SCHEMA.get_field("filename").unwrap()
-});
-pub static PAGE_FIELD: Lazy<Field> = Lazy::new(|| {
-    TANTIVY_SCHEMA.get_field("page").unwrap()
-});
-pub static LINE_FIELD: Lazy<Field> = Lazy::new(|| {
-    TANTIVY_SCHEMA.get_field("line").unwrap()
-});
-pub static CONTENT_FIELD: Lazy<Field> = Lazy::new(|| {
-    TANTIVY_SCHEMA.get_field("content").unwrap()
-});
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct SearchResultDirectory {
+    pub name: String,
+    pub path: String,
+}
+
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct SearchResultFile {
+    pub name: String,
+    pub path: String,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct SearchResultItem {
+    pub page: u64,
+    pub line: u64,
+    pub content: String,
+    pub file: String,
+    pub path: String,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum SearchResult {
+    Directory(SearchResultDirectory),
+    File(SearchResultFile),
+    Item(SearchResultItem),
+}
 
 pub struct Indexer {
-    index: Index,
+    conn: rusqlite::Connection,
 }
+
 
 impl Indexer {
 
     fn get_index_path() -> PathBuf {
         PathBuf::from(CONFIG.get().unwrap().index_path.clone())
     }
-    
-    pub fn init_indexer() -> Result<(), Box<dyn std::error::Error>> {
-        let index_path = Self::get_index_path();
-        if !index_path.exists() {
-            std::fs::create_dir_all(&index_path)?;
-        }
-        let _ = Index::create_in_dir(&index_path, TANTIVY_SCHEMA.clone())?;
-        Ok(())
-    }
 
     pub fn reset_indexer() -> Result<(), Box<dyn std::error::Error>> {
         let index_path = Self::get_index_path();
         if index_path.exists() {
-            std::fs::remove_dir_all(index_path)?;
+            std::fs::remove_dir_all(&index_path)?;
         }
-        Self::init_indexer()?;
+        println!("Creating index directory at: {:?}", index_path);
+        std::fs::create_dir_all(&index_path)?;
+        let conn = Connection::open(index_path.join("index.db"))?;
+        conn.execute_batch(
+            r"
+            CREATE TABLE directories (
+                id INTEGER PRIMARY KEY, 
+                name TEXT NOT NULL, 
+                path TEXT NOT NULL, 
+                UNIQUE (path)
+            );
+            CREATE TABLE files (
+                id INTEGER PRIMARY KEY, 
+                directory_id INTEGER NOT NULL, 
+                name TEXT NOT NULL, 
+                UNIQUE (directory_id, name)
+            );
+            CREATE TABLE items (
+                id INTEGER PRIMARY KEY, 
+                file_id INTEGER NOT NULL,
+                page INTEGER NOT NULL, 
+                line INTEGER NOT NULL, 
+                content TEXT NOT NULL
+            );
+            "
+        )?;
         Ok(())
     }
     
     pub fn get_indexer() -> Result<Indexer, Box<dyn std::error::Error>> {
         let index_path = Self::get_index_path();
-        // let tokenizer = tantivy_jieba::JiebaTokenizer {};
-        // let analyzer = TextAnalyzer::builder(tokenizer)
-        //     .filter(LowerCaser)
-        //     .filter(Stemmer::default())
-        //     .build();
-        let index = Index::open_in_dir(index_path)?;
-        // index.tokenizers().register("jieba", analyzer);
-        Ok(Indexer { index })
+        if !index_path.exists() {
+            Self::reset_indexer()?;
+        }
+        // println!("Opening index at: {:?}", index_path);
+        let conn = Connection::open(index_path.join("index.db"))?;
+        // println!("is_autocommit: {}", conn.is_autocommit());
+        Ok(Indexer { conn })
     }
 
-    pub fn write_items(&self, file: &Path, items: Vec<Item>) -> Result<(), Box<dyn std::error::Error>> {
-        let mut index_writer: IndexWriter = self.index.writer(50_000_000).unwrap();
-
-        let path_str = file.parent().unwrap().to_str().unwrap();
-        let filename_str = file.file_name().unwrap().to_str().unwrap();
-        for item in items {
-            let doc = doc!(
-                PATH_FIELD.clone() => path_str,
-                FILENAME_FIELD.clone() => filename_str,
-                PAGE_FIELD.clone() => item.page as u64,
-                LINE_FIELD.clone() => item.line as u64,
-                CONTENT_FIELD.clone() => item.content.as_str()
-            );
-            index_writer.add_document(doc)?;
+    pub fn write_directory(&self, directory: &Path) -> Result<(), Box<dyn std::error::Error>> {
+        if !directory.is_dir() {
+            return Err(format!("Path {} is not a directory", directory.display()).into());
         }
-        index_writer.commit().unwrap();
+        let directory = directory.canonicalize().unwrap();
+        let dir_name = directory.file_name().unwrap().to_str().unwrap();
+        let dir_path = directory.to_str().unwrap();
+        self.conn.execute(
+            "INSERT INTO directories (name, path) VALUES (?1, ?2) ON CONFLICT(path) DO NOTHING",
+            params![&dir_name, &dir_path],
+        ).unwrap();
         Ok(())
     }
 
-    pub fn search(&self, content: &str, limit: usize, exact: bool) -> Result<Vec<Item>, Box<dyn std::error::Error>> {
-        let reader = self.index
-            .reader_builder()
-            .reload_policy(ReloadPolicy::OnCommitWithDelay)
-            .try_into()?;
-        let searcher = reader.searcher();
-
-        let query: Box<dyn tantivy::query::Query>;
-        if exact {
-            // query = Box::new(RegexQuery::from_pattern(&format!(r".*{}.*", content), CONTENT_FIELD.clone())?);
-            query = Box::new(BooleanQuery::new(vec![
-                (Occur::Should, Box::new(RegexQuery::from_pattern(&format!(r".*{}.*", content), PATH_FIELD.clone())?) as Box<dyn tantivy::query::Query>),
-                (Occur::Should, Box::new(RegexQuery::from_pattern(&format!(r".*{}.*", content), FILENAME_FIELD.clone())?)),
-                (Occur::Should, Box::new(RegexQuery::from_pattern(&format!(r".*{}.*", content), CONTENT_FIELD.clone())?)),
-            ]));
-        } else {
-            // 分词匹配
-            let query_parser = QueryParser::for_index(&self.index, vec![PATH_FIELD.clone(), FILENAME_FIELD.clone(), CONTENT_FIELD.clone()]);
-            query = query_parser.parse_query(content)?;
+    pub fn write_file_items(&self, file: &Path, items: Vec<Item>) -> Result<(), Box<dyn std::error::Error>> {
+        if !file.is_file() {
+            return Err(format!("Path {} is not a file", file.display()).into());
         }
+        let file = file.canonicalize().unwrap();
+        let directory_path = file.parent().unwrap().to_str().unwrap();
+        let directory_id: i64 = self.conn.query_row(
+            "SELECT id FROM directories WHERE path = ?1",
+            params![&directory_path],
+            |row| row.get(0),
+        ).unwrap();
+        // println!("write_file_items Directory ID: {}", directory_id);
+        
+        let file_name = file.file_name().unwrap().to_str().unwrap();
 
-        let top_docs = searcher.search(&query, &TopDocs::with_limit(limit))?;
-        let mut results = Vec::new();
-        for (_score, doc_address) in top_docs {
-            let retrieved_doc: TantivyDocument = searcher.doc(doc_address)?;
-            let path_str = retrieved_doc.get_first(PATH_FIELD.clone()).unwrap().as_str().unwrap();
-            let filename_str = retrieved_doc.get_first(FILENAME_FIELD.clone()).unwrap().as_str().unwrap();
-            let mut file = PathBuf::from(path_str);
-            file.push(filename_str);
+        let file_id: i64 = self.conn.query_row(
+            "INSERT INTO files (directory_id, name) VALUES (?1, ?2)  ON CONFLICT(directory_id, name) DO NOTHING RETURNING id",
+            params![&directory_id, file_name],
+            |row| row.get(0),
+        ).unwrap();
+        // println!("write_file_items File ID: {}", file_id);
 
-            results.push(Item {
-                page: retrieved_doc.get_first(PAGE_FIELD.clone()).unwrap().as_u64().unwrap(),
-                line: retrieved_doc.get_first(LINE_FIELD.clone()).unwrap().as_u64().unwrap(),
-                content: retrieved_doc.get_first(CONTENT_FIELD.clone()).unwrap().as_str().unwrap().to_string(),
-            });
+        for item in items {
+            self.conn.execute(
+                "INSERT INTO items (file_id, page, line, content) VALUES (?1, ?2, ?3, ?4)",
+                params![&file_id, &item.page, &item.line, &item.content],
+            ).unwrap();
+            // println!("write_file_items Item inserted: {:?}", item);
         }
-        Ok(results)
+        Ok(())
+    }
+
+    pub fn search(&self, content: &str, limit: usize) -> Result<Vec<SearchResult>, Box<dyn std::error::Error>> {
+        let mut result = Vec::new();
+
+        let sql = format!("SELECT name, path FROM directories WHERE name LIKE '%{}%' LIMIT {}", content, limit);
+        // println!("SQL for directory search: {}", sql);
+        let mut stmt = self.conn.prepare(&sql)?;
+        let rows = stmt.query_map([], |row| {
+            Ok(SearchResultDirectory {
+                name: row.get(0)?,
+                path: row.get(1)?,
+            })
+        })?;
+
+        for row in rows {
+            result.push(SearchResult::Directory(row.unwrap()));
+        }
+        // println!("directories result: {:?}", result);
+
+        let sql = format!(r"SELECT files.name, directories.path 
+            FROM files
+            left outer join directories
+            on files.directory_id = directories.id
+            WHERE files.name LIKE '%{}%' LIMIT {}", content, limit);
+        // println!("SQL for file search: {}", sql);
+        let mut stmt = self.conn.prepare(&sql)?;
+        let rows = stmt.query_map([], |row| {
+            Ok(SearchResultFile {
+                name: row.get(0)?,
+                path: row.get(1)?,
+            })
+        })?;
+
+        for row in rows {
+            result.push(SearchResult::File(row.unwrap()));
+        }
+        // println!("files result: {:?}", result);
+
+        let sql = format!(r"SELECT items.page, items.line, items.content, files.name, directories.path
+            FROM items
+            LEFT OUTER JOIN files ON items.file_id = files.id
+            LEFT OUTER JOIN directories ON files.directory_id = directories.id
+            WHERE items.content LIKE '%{}%' LIMIT {}", content, limit);
+        // println!("SQL for item search: {}", sql);
+        let mut stmt = self.conn.prepare(&sql)?;
+        let rows = stmt.query_map([], |row| {
+            Ok(SearchResultItem {
+                page: row.get(0)?,
+                line: row.get(1)?,
+                content: row.get(2)?,
+                file: row.get(3)?,
+                path: row.get(4)?,
+            })
+        })?;
+
+        for row in rows {
+            result.push(SearchResult::Item(row.unwrap()));
+        }
+        // println!("items result: {:?}", result);
+
+        Ok(result)
+    }
+
+    pub fn delete_file(&self, file: &Path) -> Result<(), Box<dyn std::error::Error>> {
+        // TODO 这时候文件已经删除了，不应该判断了
+        // if !file.is_file() {
+        //     return Err(format!("Path {} is not a file", file.display()).into());
+        // }
+
+        let file = file.canonicalize().unwrap();
+        let file_name = file.file_name().unwrap().to_str().unwrap();
+        let directory_path = file.parent().unwrap().to_str().unwrap();
+
+        let directory_id: i64 = self.conn.query_row(
+            "SELECT id FROM directories WHERE path = ?1",
+            &[&directory_path],
+            |row| row.get(0),
+        ).unwrap();
+
+        let file_id: i64 = self.conn.query_row(
+            "SELECT id FROM files WHERE directory_id = ?1 AND name = ?2",
+            &[&directory_id.to_string(), file_name],
+            |row| row.get(0),
+        ).unwrap();
+
+        self.conn.execute(
+            "DELETE FROM items WHERE file_id = ?1",
+            &[&file_id.to_string()],
+        ).unwrap();
+
+        self.conn.execute(
+            "DELETE FROM files WHERE id = ?1",
+            &[&file_id.to_string()],
+        ).unwrap();
+
+        Ok(())
     }
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -153,81 +243,160 @@ mod tests {
     use crate::test::test::TestEnv;
 
     #[test]
-    fn test_init_index() {
+    fn test_reset_index() {
         let _env = TestEnv::new();
-        Indexer::init_indexer().unwrap();
-        // assert_eq!(indexer.index.schema().fields().count(), 5);
+        Indexer::reset_indexer().unwrap();
     }
 
     #[test]
     fn test_get_index() {
         let _env = TestEnv::new();
-        Indexer::init_indexer().unwrap();
         let opened_indexer = Indexer::get_indexer().unwrap();
-        assert_eq!(opened_indexer.index.schema().fields().count(), 5);
     }
 
     #[test]
-    fn test_write_items() {
+    fn test_path_items() {
         let _env = TestEnv::new();
-        let _ = Indexer::init_indexer();
+        let path = Path::new("..\\test_data");
+        let path = Path::new("\\\\?\\C:\\Users\\dongchao\\Code\\deepindex\\test_data");
+        println!("{}", path.to_str().unwrap());
+        println!("{}", path.exists());
+        println!("{}", path.canonicalize().unwrap().to_str().unwrap());
+
+        println!("{}", path.parent().unwrap().to_str().unwrap());
+        println!("{}", path.parent().unwrap().file_name().unwrap().to_str().unwrap());
+        println!("{}", path.canonicalize().unwrap().to_str().unwrap());
+    }
+
+    
+    pub fn print_all_rows(conn: &rusqlite::Connection, table: &str) {
+        let sql = format!("SELECT * FROM {}", table);
+        let mut stmt = conn.prepare(&sql).unwrap();
+        let col_count = stmt.column_count();
+        let col_names: Vec<String> = stmt.column_names().into_iter().map(|s| s.to_string()).collect();
+
+        let rows = stmt.query_map([], |row| {
+            let mut vals = Vec::new();
+            for i in 0..col_count {
+                let v: rusqlite::types::Value = row.get(i)?;
+                vals.push(format!("{:?}", v));
+            }
+            Ok(vals)
+        }).unwrap();
+
+        println!("===== {} =====", table);
+        println!("Columns: {:?}", col_names);
+        for r in rows {
+            println!("{:?}", r.unwrap());
+        }
+    }
+
+    #[test]
+    fn test_write_directory() {
+        let _env = TestEnv::new();
+        let indexer = Indexer::get_indexer().unwrap();
+        let path = Path::new("../test_data/");
+        indexer.write_directory(path).unwrap();
+    }
+
+    #[test]
+    fn test_write_file_items() {
+        let _env = TestEnv::new();
+        let indexer = Indexer::get_indexer().unwrap();
+
+        let file = Path::new("../test_data/1.txt");
+        indexer.write_directory(file.parent().unwrap()).unwrap();
+
+        let items = vec![
+            Item { page: 0, line: 1, content: "Hello, world!".into() },
+            Item { page: 0, line: 2, content: "This is a test.".into() },
+        ];
+        indexer.write_file_items(file, items).unwrap();
+    }
+
+
+    #[test]
+    fn test_search_path() {
+        let _env = TestEnv::new();
+        let indexer = Indexer::get_indexer().unwrap();
+        let file = Path::new("../test_data/");
+        indexer.write_directory(file).unwrap();
+
+        let result = indexer.search("test_data", 10).unwrap();
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0], SearchResult::Directory(SearchResultDirectory { 
+            name: "test_data".into(), 
+            path: file.canonicalize().unwrap().to_str().unwrap().into() 
+        }));
+    }
+
+    
+    #[test]
+    fn test_search_file() {
+        let _env = TestEnv::new();
         let indexer = Indexer::get_indexer().unwrap();
         let items = vec![
             Item { page: 0, line: 1, content: "Hello, world!".into() },
             Item { page: 0, line: 2, content: "This is a test.".into() },
         ];
-        indexer.write_items(Path::new("./path/to/file/english_part.txt"), items).unwrap();
+        let file = Path::new("../test_data/1.txt");
+        indexer.write_directory(file.parent().unwrap()).unwrap();
+        indexer.write_file_items(file, items).unwrap();
+
+        let result = indexer.search("1.t", 10).unwrap();
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0], SearchResult::File(SearchResultFile { 
+            name: "1.txt".into(), 
+            path: file.parent().unwrap().canonicalize().unwrap().to_str().unwrap().into() 
+        }));
     }
 
-
     #[test]
-    fn test_search_items() {
+    fn test_search_item() {
         let _env = TestEnv::new();
-        let _ = Indexer::init_indexer();
         let indexer = Indexer::get_indexer().unwrap();
         let items = vec![
             Item { page: 0, line: 1, content: "Hello, world!".into() },
             Item { page: 0, line: 2, content: "This is a test.".into() },
         ];
-        indexer.write_items(Path::new("./path/to/file/english_part.txt"), items).unwrap();
-        let result = indexer.search("is", 10, false).unwrap();
+        let file = Path::new("../test_data/1.txt");
+        indexer.write_directory(file.parent().unwrap()).unwrap();
+        indexer.write_file_items(file, items).unwrap();
+
+        let result = indexer.search("world", 10).unwrap();
         assert_eq!(result.len(), 1);
-        assert_eq!(result[0].content, "This is a test.");
-        // println!("Search result: {:?}", result);
+        assert_eq!(result[0], SearchResult::Item(SearchResultItem { page: 0,
+            line: 1, 
+            content: "Hello, world!".into(),
+            file: "1.txt".into(),
+            path: file.parent().unwrap().canonicalize().unwrap().to_str().unwrap().into(),
+        }));
+
     }
 
+    
     #[test]
-    fn test_search_chinese_items() {
+    fn test_delete_file() {
         let _env = TestEnv::new();
-        let _ = Indexer::init_indexer();
         let indexer = Indexer::get_indexer().unwrap();
         let items = vec![
-            Item { page: 0, line: 1, content: "你好，世界！".into() },
-            Item { page: 0, line: 2, content: "这是一项测试。".into() },
+            Item { page: 0, line: 1, content: "Hello, world!".into() },
+            Item { page: 0, line: 2, content: "This is a test.".into() },
         ];
-        indexer.write_items(Path::new("./path/to/file/chinese_part.txt"), items).unwrap();
-        let result = indexer.search("世界", 10, false).unwrap();
+        let file = Path::new("../test_data/1.txt");
+        indexer.write_directory(file.parent().unwrap()).unwrap();
+        indexer.write_file_items(file, items).unwrap();
+
+        indexer.delete_file(file).unwrap();
+
+        let result = indexer.search("1.t", 10).unwrap();
+        assert_eq!(result.len(), 0);
+
+        let result = indexer.search("world", 10).unwrap();
+        assert_eq!(result.len(), 0);
+
+        let result = indexer.search("test_data", 10).unwrap();
         assert_eq!(result.len(), 1);
-        assert_eq!(result[0].content, "你好，世界！");
     }
 
-    #[test]
-    fn test_search_chinese_exact_items() {
-        let _env = TestEnv::new();
-        let _ = Indexer::init_indexer();
-        let indexer = Indexer::get_indexer().unwrap();
-        let items = vec![
-            Item { page: 0, line: 1, content: "你好，世界！".into() },
-            Item { page: 0, line: 2, content: "这是一项测试。".into() },
-        ];
-        indexer.write_items(Path::new("./path/to/file/chinese_part.txt"), items).unwrap();
-
-        let result = indexer.search("界", 10, true).unwrap();
-        assert_eq!(result.len(), 1);
-        assert_eq!(result[0].content, "你好，世界！");
-
-        let result = indexer.search("chin", 10, true).unwrap();
-        assert_eq!(result.len(), 2);
-        // assert_eq!(result[0].content, "你好，世界！");
-    }
 }

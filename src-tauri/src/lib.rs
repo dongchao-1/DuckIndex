@@ -11,6 +11,7 @@ use crate::indexer::Indexer;
 mod config;
 mod reader;
 mod indexer;
+mod indexer_tantivy;
 mod test;
 
 pub static CONFIG: OnceCell<AppConfig> = OnceCell::new();
@@ -29,11 +30,14 @@ fn setup_index_task(window: tauri::WebviewWindow) {
 #[tauri::command]
 fn index_all_files() -> String {
     Indexer::reset_indexer().unwrap();
+    let reader = reader::CompositeReader::new();
+    let indexer = Indexer::get_indexer().unwrap();
+
     let data_paths = CONFIG.get().unwrap().data_path.clone();
     for data_path in &data_paths {
         let path = Path::new(data_path);
         if path.exists() {
-            index_dir(path).unwrap();
+            index_dir(path, &reader, &indexer).unwrap();
         } else {
             eprintln!("Path does not exist: {}", data_path);
         }
@@ -45,26 +49,26 @@ fn index_all_files() -> String {
 #[tauri::command]
 fn search(query: &str) -> String {
     let indexer = Indexer::get_indexer().unwrap();
-    let results = indexer.search(query, 10, true).unwrap();
+    let results = indexer.search(query, 10).unwrap();
     format!("Found {} results: {:?}", results.len(), results)
 }
 
-fn index_dir(path:&Path) -> Result<(), Box<dyn std::error::Error>> {
-    let reader = reader::CompositeReader::new();
-    let indexer = Indexer::get_indexer()?;
-
+fn index_dir(path:&Path, reader: &reader::CompositeReader, indexer: &Indexer) -> Result<(), Box<dyn std::error::Error>> {
+    println!("Indexing directory: {}", path.display());
+    indexer.write_directory(path).unwrap();
     let entries = fs::read_dir(path)?;
     for entry in entries {
         let entry = entry?;
         let file_type = entry.file_type().unwrap();
         if file_type.is_file() {
             // 处理文件
+            println!("Indexing file: {}", entry.path().display());
             let file = entry.path();
             let items = reader.read(&file)?;
-            indexer.write_items(&file, items).unwrap();
+            indexer.write_file_items(&file, items).unwrap();
         } else if file_type.is_dir() {
             // 递归处理子目录
-            index_dir(&entry.path())?;
+            index_dir(&entry.path(), reader, indexer).unwrap();
         }
     }
     Ok(())

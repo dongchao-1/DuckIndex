@@ -33,5 +33,7 @@ zip = "4.3.0"
 quick-xml = "0.38.1"
 lopdf = "0.36.0"
 
+rusqlite = { version = "0.37.0", features = ["bundled"] }
+
 [dev-dependencies]
 tempfile = "3"

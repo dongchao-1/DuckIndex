@@ -10,12 +10,14 @@ use quick_xml::events::Event as quickXmlEvent;
 use quick_xml::Reader as quickXmlReader;
 use lopdf::Document as pdfDocument;
 
+
 #[derive(Debug)]
 pub struct Item {
     pub page: u64,
     pub line: u64,
     pub content: String,
 }
+
 
 pub trait Reader {
     fn read(&self, file_path: &Path) -> Result<Vec<Item>, Box<dyn std::error::Error>>;
@@ -238,7 +240,7 @@ impl Reader for PdfReader {
         for page_num in 1..=doc.get_pages().len() {
             match doc.extract_text(&[page_num.try_into().unwrap()]) {
                 Ok(page_text) => {
-                    println!("page_text: {}", page_text);
+                    // println!("page_text: {}", page_text);
                     text.push_str(&page_text.strip_suffix("\n").unwrap());
                 }
                 Err(_) => {
