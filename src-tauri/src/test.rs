@@ -4,7 +4,7 @@ pub mod test{
     use crate::config::AppConfig;
     use crate::CONFIG;
     use tempfile::Builder;
-
+    use crate::sqlite::init_pool;
 
     pub struct TestEnv {
         #[allow(dead_code)]
@@ -23,6 +23,8 @@ pub mod test{
                 index_path: temp_dir.path().join("index").to_string_lossy().to_string(),
             };
             CONFIG.set(config).unwrap();
+
+            init_pool();
 
             TestEnv { temp_dir }
         }

@@ -53,7 +53,7 @@ impl CompositeReader {
                 }
             }
         }
-        Ok(vec![])
+        Err("Unsupported file type".into())
     }
 }
 
@@ -241,7 +241,7 @@ impl Reader for PdfReader {
             match doc.extract_text(&[page_num.try_into().unwrap()]) {
                 Ok(page_text) => {
                     // println!("page_text: {}", page_text);
-                    text.push_str(&page_text.strip_suffix("\n").unwrap());
+                    text.push_str(&page_text.trim_end_matches("\n"));
                 }
                 Err(_) => {
                     // You may want to handle the error, log it, or skip the page
@@ -291,8 +291,9 @@ mod tests {
     #[test]
     fn test_composite_unknown_extension() {
         let reader = CompositeReader::new();
-        let items = reader.read(Path::new("../test_data/1.xyz")).unwrap();
-        assert_eq!(items.len(), 0);
+        let result = reader.read(Path::new("../test_data/1.xyz"));
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().to_string(), "Unsupported file type");
     }
 
     #[test]
@@ -307,7 +308,7 @@ mod tests {
     fn test_docx_reader() {
         let reader = DocxReader;
         assert_eq!(reader.supports(), vec!["docx"]);
-        let items = reader.read(Path::new("../test_data/test.docx")).unwrap();
+        let items = reader.read(Path::new("../test_data/office/test.docx")).unwrap();
         // println!("Items: {:?}", items);
         assert_eq!(items.len(), 10);
     }
@@ -316,7 +317,7 @@ mod tests {
     fn test_pptx_reader() {
         let reader = PptxReader;
         assert_eq!(reader.supports(), vec!["pptx"]);
-        let items = reader.read(Path::new("../test_data/test.pptx")).unwrap();
+        let items = reader.read(Path::new("../test_data/office/test.pptx")).unwrap();
         // println!("Items: {:?}", items);
         assert_eq!(items.len(), 5);
     }

@@ -1,77 +1,78 @@
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 use tauri::Emitter;
 use tauri::Manager;
-use std::fs;
-use std::path::Path;
+use std::fs::create_dir_all;
+use std::path::PathBuf;
+use std::sync::OnceLock;
 use once_cell::sync::OnceCell;
+use std::sync::mpsc::{self, Sender, Receiver};
 
 use crate::config::AppConfig;
 use crate::indexer::Indexer;
+use crate::sqlite::init_pool;
 
 mod config;
 mod reader;
+mod sqlite;
 mod indexer;
 mod indexer_tantivy;
+mod worker;
 mod test;
 
 pub static CONFIG: OnceCell<AppConfig> = OnceCell::new();
+static INDEX_TX: OnceLock<Sender<String>> = OnceLock::new();
+fn get_tx() -> &'static Sender<String> {
+    INDEX_TX.get().expect("Channel not initialized")
+}
 
-fn setup_index_task(window: tauri::WebviewWindow) {
+fn setup_index_task(window: tauri::WebviewWindow, rx: Receiver<String>) {
     std::thread::spawn(move || {
         loop {
-            std::thread::sleep(std::time::Duration::from_secs(1));
-            // 向前端发送事件
+            let msg = rx.recv().unwrap();
             // println!("Sending index task update to frontend");
-            window.emit("index-task-update", "任务更新").unwrap();
+            window.emit("index-task-update", msg).unwrap();
         }
     });
 }
 
+
 #[tauri::command]
 fn index_all_files() -> String {
-    Indexer::reset_indexer().unwrap();
-    let reader = reader::CompositeReader::new();
-    let indexer = Indexer::get_indexer().unwrap();
+    // std::thread::spawn(move || {
+    //     Indexer::reset_indexer().unwrap();
+    //     let reader = reader::CompositeReader::new();
+    //     let indexer = Indexer::get_indexer().unwrap();
+    //     let tx = get_tx();
+    //     let data_paths = CONFIG.get().unwrap().data_path.clone();
 
-    let data_paths = CONFIG.get().unwrap().data_path.clone();
-    for data_path in &data_paths {
-        let path = Path::new(data_path);
-        if path.exists() {
-            index_dir(path, &reader, &indexer).unwrap();
-        } else {
-            eprintln!("Path does not exist: {}", data_path);
-        }
-    }
-    "索引已重建".to_string()
+    //     for data_path in &data_paths {
+    //         let path = Path::new(data_path);
+    //         if path.is_dir() {
+    //             tx.send(format!("开始索引 {}", data_path)).unwrap();
+    //             let cnt = count_files_recursive(path).unwrap();
+    //             let mut dir_stat = DirStatistics {
+    //                 dir_path: data_path.to_string(),
+    //                 file_count: cnt,
+    //                 index_count: 0,
+    //             };
+
+    //             index_dir(path, &reader, &indexer, tx, &mut dir_stat).unwrap();
+    //             tx.send(format!("索引完成 {}", data_path)).unwrap();
+    //         } else {
+    //             eprintln!("Path does not exist: {}", data_path);
+    //         }
+    //     }
+    // });
+
+    "开始重建索引".to_string()
 }
 
 
 #[tauri::command]
 fn search(query: &str) -> String {
-    let indexer = Indexer::get_indexer().unwrap();
+    let indexer = Indexer::new().unwrap();
     let results = indexer.search(query, 10).unwrap();
     format!("Found {} results: {:?}", results.len(), results)
-}
-
-fn index_dir(path:&Path, reader: &reader::CompositeReader, indexer: &Indexer) -> Result<(), Box<dyn std::error::Error>> {
-    println!("Indexing directory: {}", path.display());
-    indexer.write_directory(path).unwrap();
-    let entries = fs::read_dir(path)?;
-    for entry in entries {
-        let entry = entry?;
-        let file_type = entry.file_type().unwrap();
-        if file_type.is_file() {
-            // 处理文件
-            println!("Indexing file: {}", entry.path().display());
-            let file = entry.path();
-            let items = reader.read(&file)?;
-            indexer.write_file_items(&file, items).unwrap();
-        } else if file_type.is_dir() {
-            // 递归处理子目录
-            index_dir(&entry.path(), reader, indexer).unwrap();
-        }
-    }
-    Ok(())
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -80,8 +81,14 @@ pub fn run() {
         .setup(|app| {
                 CONFIG.set(AppConfig::load(app.handle())?).unwrap();
 
+                init_pool();
+
+                let (tx, rx) = mpsc::channel();
+                INDEX_TX.set(tx).unwrap();
+
                 let window = app.get_webview_window("main").unwrap();
-                setup_index_task(window);
+                setup_index_task(window, rx);
+
                 Ok(())
             })
         .plugin(tauri_plugin_opener::init())
@@ -90,19 +97,3 @@ pub fn run() {
         .expect("error while running tauri application");
 }
 
-
-// #[cfg(test)]
-// mod tests {
-//     use super::*;
-//     use crate::test::test::TestEnv;
-
-//     #[test]
-//     fn test_index_all_files() {
-//         let _env = TestEnv::new();
-//         index_all_files();
-//         let indexer = Indexer::get_indexer().unwrap();
-//         let result = indexer.search("is", 10).unwrap();
-//         assert_eq!(result.len(), 1);
-//     }
-
-// }
