@@ -10,7 +10,9 @@ This template should help get you started developing with Vue 3 and TypeScript i
 pnpm install
 pnpm tauri dev
 
-cargo nextest run
+cargo nextest run --manifest-path .\src-tauri\Cargo.toml
 
+
+CARGO_TARGET_DIR=.\src-tauri\ cargo nextest run
 C:\Users\dongchao\AppData\Local\Temp
 C:\Users\dongchao\AppData\Roaming\com.dongchao.deepindex

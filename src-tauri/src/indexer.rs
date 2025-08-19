@@ -111,18 +111,19 @@ impl Indexer {
         Ok(())
     }
 
-    pub fn write_directory(&self, directory: &Path) -> Result<()> {
+    pub fn write_directory(&self, directory: &Path) -> Result<i64> {
         self.check_is_absolute(directory)?;
         let dir_name = directory.file_name().unwrap().to_str().unwrap();
         let dir_path = directory.to_str().unwrap();
         let modified_datetime: DateTime<Local> = DateTime::from(fs::metadata(dir_path)?.modified()?);
         let modified_time = modified_datetime.to_rfc3339();
 
-        get_pool()?.execute(
-            "INSERT INTO directories (name, path, modified_time) VALUES (?1, ?2, ?3) ON CONFLICT(path) DO NOTHING",
+        let directory_id = get_pool()?.query_row(
+            "INSERT INTO directories (name, path, modified_time) VALUES (?1, ?2, ?3) ON CONFLICT(path) DO UPDATE SET path = path RETURNING id",
             params![&dir_name, &dir_path, &modified_time],
-        ).unwrap();
-        Ok(())
+            |row| row.get(0)
+        )?;
+        Ok(directory_id)
     }
 
     pub fn get_directory(&self, directory: &Path) -> Result<SearchResultDirectory> {
@@ -143,24 +144,18 @@ impl Indexer {
     pub fn write_file_items(&self, file: &Path, items: Vec<Item>) -> Result<()> {
         self.check_is_absolute(file)?;
         let file = file.canonicalize().unwrap();
-        let directory_path = file.parent().unwrap().to_str().unwrap();
-        let conn = get_pool()?;
-        let directory_id: i64 = conn.query_row(
-            "SELECT id FROM directories WHERE path = ?1",
-            params![&directory_path],
-            |row| row.get(0),
-        ).unwrap();
-        // println!("write_file_items Directory ID: {}", directory_id);
+        let directory_id = self.write_directory(file.parent().unwrap())?;
         
         let file_name = file.file_name().unwrap().to_str().unwrap();
         let modified_datetime: DateTime<Local> = DateTime::from(fs::metadata(&file)?.modified()?);
         let modified_time = modified_datetime.to_rfc3339();
 
+        let conn = get_pool()?;
         let file_id: i64 = conn.query_row(
             "INSERT INTO files (directory_id, name, modified_time) VALUES (?1, ?2, ?3) ON CONFLICT(directory_id, name) DO NOTHING RETURNING id",
             params![&directory_id, file_name, &modified_time],
             |row| row.get(0),
-        ).unwrap();
+        )?;
         // println!("write_file_items File ID: {}", file_id);
 
         for chunk in items.chunks(1000) {

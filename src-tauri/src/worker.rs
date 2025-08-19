@@ -94,24 +94,19 @@ impl Worker {
     }
 
     pub fn new() -> Result<Worker> {
-        // if let Err(_) = Self::check_worker_init() {
-        //     Self::reset_worker()?;
-        // }
-        // println!("Opening index at: {:?}", index_path);
-        // let conn = get_pool()?;
         let indexer = Indexer::new()?;
         let reader = CompositeReader::new()?;
         Ok(Worker { indexer, reader })
     }
 
-    fn add_task(&self, taks_type: &TaskType, path: &Path) -> Result<()> {
+    fn add_task(&self, task_type: &TaskType, path: &Path) -> Result<()> {
         let conn = get_pool()?;
 
         let path = path.canonicalize()?.to_str().unwrap().to_string();
         let now = Local::now().to_rfc3339();
         conn.execute(
             "INSERT INTO tasks (type, path, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
-            params![taks_type.to_string(), path, TaskStatus::PENDING.to_string(), now, now],
+            params![task_type.to_string(), path, TaskStatus::PENDING.to_string(), now, now],
         )?;
         Ok(())
     }
@@ -149,9 +144,6 @@ impl Worker {
     }
 
     pub fn start_process() -> Result<()> {
-        // if let Err(_) = Self::check_worker_init() {
-        //     Self::reset_worker()?;
-        // }
         let num_cpus = std::thread::available_parallelism()
             .map_or(1, |n| n.get());
         let num_threads = std::cmp::max(1, num_cpus / 2);
@@ -180,6 +172,7 @@ impl Worker {
             WHERE id = (
                 SELECT id FROM tasks 
                 WHERE status = ?3
+                ORDER BY id
                 LIMIT 1
             )
             RETURNING id, type, path", 
@@ -193,14 +186,6 @@ impl Worker {
         );
 
         match task {
-            Err(rusqlite::Error::QueryReturnedNoRows) => {
-                // 没有待处理的任务，休息1s
-                thread::sleep(Duration::from_secs(1));
-                return Err(anyhow!("No pending tasks found"));
-            }
-            Err(e) => {
-                return Err(anyhow!("Failed to process task: {}", e));
-            }
             Ok((id, task_type, path)) => {               
                 let path = Path::new(&path);
                 let task_type = TaskType::from_str(&task_type).unwrap();
@@ -211,44 +196,24 @@ impl Worker {
                     }
                     TaskType::FILE => {
                         // 处理文件任务
-                        let items = self.reader.read(path)?;
-                        self.indexer.write_file_items(path, items)?;
+                        if let Ok(items) = self.reader.read(path) {
+                            self.indexer.write_file_items(path, items)?;
+                        }
                     }
                 }
                 conn.execute("delete from tasks where id = ?", params![id])?;
             }
+            Err(rusqlite::Error::QueryReturnedNoRows) => {
+                // 没有待处理的任务，休息1s
+                thread::sleep(Duration::from_secs(1));
+                return Ok(());
+            }
+            Err(e) => {
+                return Err(anyhow!("Failed to process task: {}", e));
+            }
         }
         Ok(())
     }
-
-    // fn index_dir(&self, path:&Path, reader: &reader::CompositeReader, indexer: &Indexer, tx: &Sender<String>, dir_stat: &mut DirStatistics) -> Result<(), Box<dyn std::error::Error>> {
-    //     // println!("Indexing directory: {}", path.display());
-    //     // tx.send(format!("Indexing directory: {}", path.display())).unwrap();
-    //     indexer.write_directory(path).unwrap();
-    //     let entries = fs::read_dir(path)?;
-    //     for entry in entries {
-    //         let entry = entry?;
-    //         let file_type = entry.file_type().unwrap();
-    //         if file_type.is_file() {
-    //             // 处理文件
-    //             // println!("Indexing file: {}", entry.path().display());
-    //             tx.send(format!("正在索引 {}, 总文件数: {}, 已完成: {}, 当前文件: {}", dir_stat.dir_path, dir_stat.file_count, dir_stat.index_count, entry.path().display())).unwrap();
-    //             let file = entry.path();
-    //             if let Ok(items) = reader.read(&file) {
-    //                 indexer.write_file_items(&file, items).unwrap();
-    //             }
-    //             dir_stat.index_count += 1;
-    //             // if dir_stat.index_count % 100 == 0 || dir_stat.index_count == dir_stat.file_count {
-    //             //     tx.send(format!("正在索引 {}, 总文件数: {}, 已完成: {}", dir_stat.dir_path, dir_stat.file_count, dir_stat.index_count)).unwrap();
-    //             // }
-    //         } else if file_type.is_dir() {
-    //             // 递归处理子目录
-    //             index_dir(&entry.path(), reader, indexer, tx, dir_stat).unwrap();
-    //         }
-    //     }
-    //     Ok(())
-    // }
-
 }
 
 
@@ -300,8 +265,10 @@ mod tests {
         assert_eq!(status.running, 0);
         assert_eq!(status.failed, 0);
 
-        let r = worker.process_task();
-        assert!(r.is_err());
-        assert_eq!(r.unwrap_err().to_string(), "No pending tasks found");
+        let _ = worker.process_task();
+        let status = worker.get_tasks_status().unwrap();
+        assert_eq!(status.pending, 0);
+        assert_eq!(status.running, 0);
+        assert_eq!(status.failed, 0);
     }
 }
