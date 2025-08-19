@@ -11,3 +11,6 @@ pnpm install
 pnpm tauri dev
 
 cargo nextest run
+
+C:\Users\dongchao\AppData\Local\Temp
+C:\Users\dongchao\AppData\Roaming\com.dongchao.deepindex

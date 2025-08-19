@@ -1,10 +1,8 @@
 
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use chrono::{DateTime, Local};
-use r2d2::PooledConnection;
-use r2d2_sqlite::SqliteConnectionManager;
-use rusqlite::{Connection, params};
+use rusqlite::params;
 use anyhow::{anyhow, Result};
 
 use crate::reader::Item;
@@ -41,12 +39,18 @@ pub enum SearchResult {
 }
 
 pub struct Indexer {
-    conn: PooledConnection<SqliteConnectionManager>,
 }
 
 
 impl Indexer {
 
+    pub fn check_or_init() -> Result<()> {
+        if let Err(_) = Self::check_indexer_init() {
+            Self::reset_indexer()?;
+        }
+        Ok(())
+    }
+    
     fn check_indexer_init() -> Result<()> {
         let conn = get_pool()?;
         let row = conn.query_one("select version from indexer_version", [], |row|
@@ -96,14 +100,8 @@ impl Indexer {
         Ok(())
     }
     
-    pub fn new() -> Result<Indexer> {
-        if let Err(_) = Self::check_indexer_init() {
-            Self::reset_indexer()?;
-        }
-        // println!("Opening index at: {:?}", index_path);
-        let conn = get_pool()?;
-        // println!("is_autocommit: {}", conn.is_autocommit());
-        Ok(Indexer { conn })
+    pub fn new() -> Result<Self> {
+        Ok(Indexer {})
     }
 
     fn check_is_absolute(&self, path: &Path) -> Result<()> {
@@ -120,7 +118,7 @@ impl Indexer {
         let modified_datetime: DateTime<Local> = DateTime::from(fs::metadata(dir_path)?.modified()?);
         let modified_time = modified_datetime.to_rfc3339();
 
-        self.conn.execute(
+        get_pool()?.execute(
             "INSERT INTO directories (name, path, modified_time) VALUES (?1, ?2, ?3) ON CONFLICT(path) DO NOTHING",
             params![&dir_name, &dir_path, &modified_time],
         ).unwrap();
@@ -130,7 +128,8 @@ impl Indexer {
     pub fn get_directory(&self, directory: &Path) -> Result<SearchResultDirectory> {
         self.check_is_absolute(directory)?;
         let dir_path = directory.to_str().unwrap();
-        let mut stmt = self.conn.prepare("SELECT name, path, modified_time FROM directories WHERE path = ?1")?;
+        let conn = get_pool()?;
+        let mut stmt = conn.prepare("SELECT name, path, modified_time FROM directories WHERE path = ?1")?;
         let row = stmt.query_row(params![dir_path], |row| {
             Ok(SearchResultDirectory {
                 name: row.get(0)?,
@@ -145,7 +144,8 @@ impl Indexer {
         self.check_is_absolute(file)?;
         let file = file.canonicalize().unwrap();
         let directory_path = file.parent().unwrap().to_str().unwrap();
-        let directory_id: i64 = self.conn.query_row(
+        let conn = get_pool()?;
+        let directory_id: i64 = conn.query_row(
             "SELECT id FROM directories WHERE path = ?1",
             params![&directory_path],
             |row| row.get(0),
@@ -156,7 +156,7 @@ impl Indexer {
         let modified_datetime: DateTime<Local> = DateTime::from(fs::metadata(&file)?.modified()?);
         let modified_time = modified_datetime.to_rfc3339();
 
-        let file_id: i64 = self.conn.query_row(
+        let file_id: i64 = conn.query_row(
             "INSERT INTO files (directory_id, name, modified_time) VALUES (?1, ?2, ?3) ON CONFLICT(directory_id, name) DO NOTHING RETURNING id",
             params![&directory_id, file_name, &modified_time],
             |row| row.get(0),
@@ -187,7 +187,7 @@ impl Indexer {
             }
 
             // 执行批量插入
-            self.conn.execute(&query, params.as_slice())?;
+            conn.execute(&query, params.as_slice())?;
         }
         Ok(())
     }
@@ -199,7 +199,8 @@ impl Indexer {
         let mut files = Vec::new();
 
         let dir_path = directory.to_str().unwrap();
-        let mut stmt = self.conn.prepare("SELECT name, path, modified_time FROM directories WHERE path != ?1 AND path LIKE ?2")?;
+        let conn = get_pool()?;
+        let mut stmt = conn.prepare("SELECT name, path, modified_time FROM directories WHERE path != ?1 AND path LIKE ?2")?;
         let rows = stmt.query_map(params![dir_path, format!("{}%", dir_path)], |row| {
             Ok(SearchResultDirectory {
                 name: row.get(0)?,
@@ -212,7 +213,7 @@ impl Indexer {
             dirs.push(row?);
         }
 
-        let mut stmt = self.conn.prepare(r"SELECT files.name, directories.path, files.modified_time 
+        let mut stmt = conn.prepare(r"SELECT files.name, directories.path, files.modified_time 
             FROM files
             JOIN directories
             ON files.directory_id = directories.id
@@ -235,9 +236,11 @@ impl Indexer {
     pub fn search(&self, content: &str, limit: usize) -> Result<Vec<SearchResult>> {
         let mut result = Vec::new();
 
+        let conn = get_pool()?;
+
         let sql = format!("SELECT name, path, modified_time FROM directories WHERE name LIKE '%{}%' LIMIT {}", content, limit);
         // println!("SQL for directory search: {}", sql);
-        let mut stmt = self.conn.prepare(&sql)?;
+        let mut stmt = conn.prepare(&sql)?;
         let rows = stmt.query_map([], |row| {
             Ok(SearchResultDirectory {
                 name: row.get(0)?,
@@ -257,7 +260,7 @@ impl Indexer {
             on files.directory_id = directories.id
             WHERE files.name LIKE '%{}%' LIMIT {}", content, limit);
         // println!("SQL for file search: {}", sql);
-        let mut stmt = self.conn.prepare(&sql)?;
+        let mut stmt = conn.prepare(&sql)?;
         let rows = stmt.query_map([], |row| {
             Ok(SearchResultFile {
                 name: row.get(0)?,
@@ -277,7 +280,7 @@ impl Indexer {
             LEFT OUTER JOIN directories ON files.directory_id = directories.id
             WHERE items.content LIKE '%{}%' LIMIT {}", content, limit);
         // println!("SQL for item search: {}", sql);
-        let mut stmt = self.conn.prepare(&sql)?;
+        let mut stmt = conn.prepare(&sql)?;
         let rows = stmt.query_map([], |row| {
             Ok(SearchResultItem {
                 page: row.get(0)?,
@@ -300,19 +303,19 @@ impl Indexer {
         self.check_is_absolute(file)?;
         let file_name = file.file_name().unwrap().to_str().unwrap();
         let directory_path = file.parent().unwrap().to_str().unwrap();
-
-        let file_id: i64 = self.conn.query_row(
+        let conn = get_pool()?;
+        let file_id: i64 = conn.query_row(
             "SELECT id FROM files WHERE name = ?1 and directory_id in (SELECT id FROM directories WHERE path = ?2)",
             params![file_name, &directory_path],
             |row| row.get(0),
         ).unwrap();
 
-        self.conn.execute(
+        conn.execute(
             "DELETE FROM items WHERE file_id = ?1",
             &[&file_id.to_string()],
         ).unwrap();
 
-        self.conn.execute(
+        conn.execute(
             "DELETE FROM files WHERE id = ?1",
             &[&file_id.to_string()],
         ).unwrap();
@@ -334,7 +337,8 @@ impl Indexer {
         }
 
         let dir_path = directory.to_str().unwrap();
-        self.conn.execute(
+        let conn = get_pool()?;
+        conn.execute(
             "DELETE FROM directories WHERE path = ?1",
             params![dir_path],
         )?;

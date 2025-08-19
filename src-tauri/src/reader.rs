@@ -9,6 +9,7 @@ use zip::ZipArchive;
 use quick_xml::events::Event as quickXmlEvent;
 use quick_xml::Reader as quickXmlReader;
 use lopdf::Document as pdfDocument;
+use anyhow::{anyhow, Result};
 
 
 #[derive(Debug)]
@@ -20,7 +21,7 @@ pub struct Item {
 
 
 pub trait Reader {
-    fn read(&self, file_path: &Path) -> Result<Vec<Item>, Box<dyn std::error::Error>>;
+    fn read(&self, file_path: &Path) -> Result<Vec<Item>>;
     fn supports(&self) -> Vec<&str>;
 }
 
@@ -29,7 +30,7 @@ pub struct CompositeReader {
 }
 
 impl CompositeReader {
-    pub fn new() -> Self {
+    pub fn new() -> Result<Self> {
         let readers: Vec<Arc<dyn Reader>> = vec![Arc::new(TxtReader), Arc::new(DocxReader), Arc::new(PdfReader), Arc::new(PptxReader)];
         let mut reader_map: HashMap<String, Arc<dyn Reader>> = HashMap::new();
         for reader in readers {
@@ -37,14 +38,14 @@ impl CompositeReader {
                 reader_map.insert(ext.to_string(), reader.clone());
             }
         }
-        CompositeReader { reader_map }
+        Ok(CompositeReader { reader_map })
     }
 
     pub fn supports(&self) -> Vec<String> {
         self.reader_map.keys().cloned().collect()
     }
     
-    pub fn read(&self, file_path: &Path) -> Result<Vec<Item>, Box<dyn std::error::Error>> {
+    pub fn read(&self, file_path: &Path) -> Result<Vec<Item>> {
         if let Some(extension) = file_path.extension() {
             if let Some(ext_str) = extension.to_str() {
                 let ext_str = ext_str.to_lowercase();
@@ -53,13 +54,13 @@ impl CompositeReader {
                 }
             }
         }
-        Err("Unsupported file type".into())
+        Err(anyhow!("Unsupported file type"))
     }
 }
 
 struct TxtReader;
 impl Reader for TxtReader {
-    fn read(&self, file_path: &Path) -> Result<Vec<Item>, Box<dyn std::error::Error>> {
+    fn read(&self, file_path: &Path) -> Result<Vec<Item>> {
         let file = File::open(file_path)?;
         let reader = BufReader::new(file);
         let mut items = vec![];
@@ -83,7 +84,7 @@ impl Reader for TxtReader {
 
 struct DocxReader;
 impl Reader for DocxReader {
-    fn read(&self, file_path: &Path) -> Result<Vec<Item>, Box<dyn std::error::Error>> {
+    fn read(&self, file_path: &Path) -> Result<Vec<Item>> {
         let temp_dir = TempDir::new()?;
         let file = File::open(file_path)?;
         let mut archive = ZipArchive::new(file)?;
@@ -152,7 +153,7 @@ impl DocxReader {
 
 struct PptxReader;
 impl Reader for PptxReader {
-    fn read(&self, file_path: &Path) -> Result<Vec<Item>, Box<dyn std::error::Error>> {
+    fn read(&self, file_path: &Path) -> Result<Vec<Item>> {
         let temp_dir = TempDir::new()?;
         let file = File::open(file_path)?;
         let mut archive = ZipArchive::new(file)?;
@@ -232,7 +233,7 @@ impl PptxReader {
 
 struct PdfReader;
 impl Reader for PdfReader {
-    fn read(&self, file_path: &Path) -> Result<Vec<Item>, Box<dyn std::error::Error>> {
+    fn read(&self, file_path: &Path) -> Result<Vec<Item>> {
         let mut items = vec![];
         let doc = pdfDocument::load(file_path)?;
         let mut text = String::new();
@@ -283,14 +284,14 @@ mod tests {
 
     #[test]
     fn test_composite_reader() {
-        let reader = CompositeReader::new();
+        let reader = CompositeReader::new().unwrap();
         let items = reader.read(Path::new("../test_data/1.txt")).unwrap();
         assert_eq!(items.len(), 4);
     }
 
     #[test]
     fn test_composite_unknown_extension() {
-        let reader = CompositeReader::new();
+        let reader = CompositeReader::new().unwrap();
         let result = reader.read(Path::new("../test_data/1.xyz"));
         assert!(result.is_err());
         assert_eq!(result.unwrap_err().to_string(), "Unsupported file type");

@@ -1,10 +1,11 @@
 #[cfg(test)]
 pub mod test{
-    use tempfile::tempdir;
     use crate::config::AppConfig;
+    use crate::indexer::Indexer;
     use crate::CONFIG;
     use tempfile::Builder;
     use crate::sqlite::init_pool;
+    use crate::worker::Worker;
 
     pub struct TestEnv {
         #[allow(dead_code)]
@@ -13,7 +14,6 @@ pub mod test{
 
     impl TestEnv {
         pub fn new() -> Self {
-            // let temp_dir = tempdir().unwrap();
             let temp_dir = Builder::new()
                 .prefix(".deepindex_")  // 设置前缀
                 .tempdir().unwrap();        // 创建临时目录
@@ -26,6 +26,9 @@ pub mod test{
 
             init_pool();
 
+            Indexer::check_or_init().unwrap();
+            Worker::check_or_init().unwrap();
+            
             TestEnv { temp_dir }
         }
     }

@@ -1,21 +1,23 @@
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 use tauri::Emitter;
 use tauri::Manager;
-use std::fs::create_dir_all;
-use std::path::PathBuf;
+use std::path::Path;
 use std::sync::OnceLock;
+use std::thread;
+use std::time::Duration;
 use once_cell::sync::OnceCell;
 use std::sync::mpsc::{self, Sender, Receiver};
 
 use crate::config::AppConfig;
 use crate::indexer::Indexer;
 use crate::sqlite::init_pool;
+use crate::worker::Worker;
 
 mod config;
 mod reader;
 mod sqlite;
 mod indexer;
-mod indexer_tantivy;
+// mod indexer_tantivy;
 mod worker;
 mod test;
 
@@ -28,9 +30,12 @@ fn get_tx() -> &'static Sender<String> {
 fn setup_index_task(window: tauri::WebviewWindow, rx: Receiver<String>) {
     std::thread::spawn(move || {
         loop {
-            let msg = rx.recv().unwrap();
+            // let msg = rx.recv().unwrap();
+            let worker = Worker::new().unwrap();
+            let msg = worker.get_tasks_status().unwrap();
             // println!("Sending index task update to frontend");
-            window.emit("index-task-update", msg).unwrap();
+            window.emit("index-task-update", format!("{}", msg)).unwrap();
+            thread::sleep(Duration::from_secs(1));
         }
     });
 }
@@ -44,7 +49,6 @@ fn index_all_files() -> String {
     //     let indexer = Indexer::get_indexer().unwrap();
     //     let tx = get_tx();
     //     let data_paths = CONFIG.get().unwrap().data_path.clone();
-
     //     for data_path in &data_paths {
     //         let path = Path::new(data_path);
     //         if path.is_dir() {
@@ -55,7 +59,6 @@ fn index_all_files() -> String {
     //                 file_count: cnt,
     //                 index_count: 0,
     //             };
-
     //             index_dir(path, &reader, &indexer, tx, &mut dir_stat).unwrap();
     //             tx.send(format!("索引完成 {}", data_path)).unwrap();
     //         } else {
@@ -63,6 +66,12 @@ fn index_all_files() -> String {
     //         }
     //     }
     // });
+    let worker = Worker::new().unwrap();
+
+    let data_paths = CONFIG.get().unwrap().data_path.clone();
+    for data_path in data_paths {
+        worker.submit_index_all_files(Path::new(&data_path)).unwrap();
+    }
 
     "开始重建索引".to_string()
 }
@@ -82,6 +91,11 @@ pub fn run() {
                 CONFIG.set(AppConfig::load(app.handle())?).unwrap();
 
                 init_pool();
+
+                Indexer::check_or_init().unwrap();
+                Worker::check_or_init().unwrap();
+
+                Worker::start_process().unwrap();
 
                 let (tx, rx) = mpsc::channel();
                 INDEX_TX.set(tx).unwrap();

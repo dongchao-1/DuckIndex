@@ -16,7 +16,14 @@ pub fn init_pool() {
         create_dir_all(&sqlite_path).unwrap();
     }
 
-    let manager = SqliteConnectionManager::file(sqlite_path.join("index.db"));
+    let manager = SqliteConnectionManager::file(sqlite_path.join("index.db")).with_init(|conn| {
+            // 启用 auto_vacuum (1 是 FULL 模式)
+            conn.execute_batch(
+                "PRAGMA auto_vacuum = FULL; \
+                 PRAGMA journal_mode = WAL;"
+            )?;
+            Ok(())
+        });
     let pool = Pool::new(manager).expect("Failed to create pool");
     POOL.set(pool).expect("Pool already initialized");
 }
