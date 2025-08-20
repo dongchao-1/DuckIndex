@@ -22,12 +22,8 @@ mod worker;
 mod test;
 
 pub static CONFIG: OnceCell<AppConfig> = OnceCell::new();
-static INDEX_TX: OnceLock<Sender<String>> = OnceLock::new();
-fn get_tx() -> &'static Sender<String> {
-    INDEX_TX.get().expect("Channel not initialized")
-}
 
-fn setup_index_task(window: tauri::WebviewWindow, rx: Receiver<String>) {
+fn setup_index_task(window: tauri::WebviewWindow) {
     std::thread::spawn(move || {
         loop {
             // let msg = rx.recv().unwrap();
@@ -98,11 +94,8 @@ pub fn run() {
 
                 Worker::start_process().unwrap();
 
-                let (tx, rx) = mpsc::channel();
-                INDEX_TX.set(tx).unwrap();
-
                 let window = app.get_webview_window("main").unwrap();
-                setup_index_task(window, rx);
+                setup_index_task(window);
 
                 Ok(())
             })

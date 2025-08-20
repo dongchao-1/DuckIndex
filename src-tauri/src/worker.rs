@@ -9,11 +9,16 @@ use chrono::Local;
 use std::str::FromStr;
 use std::time::Duration;
 use serde::Serialize;
-use serde_json::{Result as jsonResult, Value as jsonValue};
 
 use crate::indexer::Indexer;
 use crate::reader::CompositeReader;
 use crate::sqlite::get_pool;
+
+#[cfg(windows)]
+use std::os::windows::fs::MetadataExt;
+
+#[cfg(windows)]
+const FILE_ATTRIBUTE_HIDDEN: u32 = 0x2;
 
 pub struct Worker {
     indexer: Indexer,
@@ -150,8 +155,28 @@ impl Worker {
             for entry in fs::read_dir(path)? {
                 let entry = entry?;
                 let path = entry.path();
+
+                #[cfg(windows)]
+                {
+
+                    let metadata = fs::metadata(&path)?;
+                    if metadata.file_attributes() & FILE_ATTRIBUTE_HIDDEN != 0 {
+                        continue;
+                    }
+                }
+
+                #[cfg(unix)]
+                {
+                    let file_name = path.file_name().unwrap_or_default().to_string_lossy();
+                    if file_name.starts_with('.') {
+                        continue;
+                    }
+                }
+                
                 if path.is_file() {
-                    self.add_task(&TaskType::FILE, &path)?;
+                    if self.reader.supports(&path)? {
+                        self.add_task(&TaskType::FILE, &path)?;
+                    }
                 } else if path.is_dir() {
                     self.submit_index_all_files(&path)?;
                 }

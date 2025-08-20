@@ -1,6 +1,6 @@
 use std::sync::Arc;
 use std::path::Path;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::{fs, vec};
 use std::fs::File;
 use std::io::{BufRead, BufReader};
@@ -27,6 +27,7 @@ pub trait Reader {
 
 pub struct CompositeReader {
     reader_map: HashMap<String, Arc<dyn Reader>>,
+    supports_ext: HashSet<String>,
 }
 
 impl CompositeReader {
@@ -38,20 +39,23 @@ impl CompositeReader {
                 reader_map.insert(ext.to_string(), reader.clone());
             }
         }
-        Ok(CompositeReader { reader_map })
+        let supports_ext = reader_map.keys().cloned().collect();
+        Ok(CompositeReader { reader_map, supports_ext })
     }
 
-    pub fn supports(&self) -> Vec<String> {
-        self.reader_map.keys().cloned().collect()
+    pub fn supports(&self, file: &Path) -> Result<bool> {
+        if let Some(ext) = file.extension() {
+            let ext_str = ext.to_str().unwrap().to_lowercase();
+            return Ok(self.supports_ext.contains(&ext_str));
+        }
+        Ok(false)
     }
-    
+
     pub fn read(&self, file_path: &Path) -> Result<Vec<Item>> {
-        if let Some(extension) = file_path.extension() {
-            if let Some(ext_str) = extension.to_str() {
-                let ext_str = ext_str.to_lowercase();
-                if let Some(reader) = self.reader_map.get(&ext_str) {
-                    return reader.read(file_path);
-                }
+        if let Some(ext) = file_path.extension() {
+            let ext_str = ext.to_str().unwrap().to_lowercase();
+            if let Some(reader) = self.reader_map.get(&ext_str) {
+                return reader.read(file_path);
             }
         }
         Err(anyhow!("Unsupported file type"))
