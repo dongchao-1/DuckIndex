@@ -94,6 +94,7 @@ pub fn run() {
 
                 Indexer::check_or_init().unwrap();
                 Worker::check_or_init().unwrap();
+                Worker::reset_running_tasks().unwrap();
 
                 Worker::start_process().unwrap();
 

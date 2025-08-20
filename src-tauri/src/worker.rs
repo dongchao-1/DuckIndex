@@ -2,14 +2,14 @@ use std::fs;
 use std::path::Path;
 use std::thread;
 use anyhow::{anyhow, Result};
-use r2d2::PooledConnection;
-use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::params;
 use strum::Display;
 use strum::EnumString;
 use chrono::Local;
 use std::str::FromStr;
 use std::time::Duration;
+use serde::Serialize;
+use serde_json::{Result as jsonResult, Value as jsonValue};
 
 use crate::indexer::Indexer;
 use crate::reader::CompositeReader;
@@ -38,15 +38,19 @@ enum TaskStatus {
     FAILED
 }
 
+#[derive(Debug, Serialize)]
 pub struct TaskStatusStat {
     pending: usize,
     running: usize,
     failed: usize,
+    running_tasks: Vec<String>,
+    failed_tasks: Vec<String>,
 }
 
 impl std::fmt::Display for TaskStatusStat {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "Pending: {}, Running: {}, Failed: {}", self.pending, self.running, self.failed)
+        let json_string = serde_json::to_string_pretty(&self).unwrap();
+        write!(f, "{}", json_string)
     }
 }
 
@@ -93,6 +97,35 @@ impl Worker {
         Ok(())
     }
 
+    pub fn reset_running_tasks() -> Result<()> {
+        let conn = get_pool()?;
+        // TODO 应该不需要清理
+        // let mut stmt = conn.prepare("select type, path from tasks where status = ?1")?;
+        // let rows = stmt.query_map(params![TaskStatus::RUNNING.to_string()], |row| {
+        //     let task_type: String = row.get(0)?;
+        //     let path: String = row.get(1)?;
+        //     Ok((task_type, path))
+        // })?;
+        // let indexer = Indexer::new()?;
+        // for row in rows {
+        //     let (task_type, path) = row?;
+        //     match TaskType::from_str(&task_type)? {
+        //         TaskType::DIRECTORY => {
+        //             indexer.delete_directory(Path::new(&path))?;
+        //         }
+        //         TaskType::FILE => {
+        //             indexer.delete_file(Path::new(&path))?;
+        //         }
+        //     }
+        // }
+
+        conn.execute(
+            "UPDATE tasks SET status = ?1, updated_at = ?2 WHERE status = ?3",
+            params![TaskStatus::PENDING.to_string(), Local::now().to_rfc3339(), TaskStatus::RUNNING.to_string()]
+        )?;
+        Ok(())
+    }
+
     pub fn new() -> Result<Worker> {
         let indexer = Indexer::new()?;
         let reader = CompositeReader::new()?;
@@ -131,15 +164,40 @@ impl Worker {
 
     pub fn get_tasks_status(&self) -> Result<TaskStatusStat> {
         let conn = get_pool()?;
-        let row = conn.query_one("SELECT COUNT(if(status = ?1, 1, NULL)), COUNT(if(status = ?2, 1, NULL)), COUNT(if(status = ?3, 1, NULL)) FROM tasks", 
+        let (pending, running, failed) = conn.query_one("SELECT COUNT(if(status = ?1, 1, NULL)), COUNT(if(status = ?2, 1, NULL)), COUNT(if(status = ?3, 1, NULL)) FROM tasks", 
             params![TaskStatus::PENDING.to_string(), TaskStatus::RUNNING.to_string(), TaskStatus::FAILED.to_string()], 
             |row| {
                 Ok((row.get(0)?, row.get(1)?, row.get(2)?))
             }).unwrap_or((0, 0, 0));
+        
+        let mut stmt = conn.prepare("SELECT path FROM tasks WHERE status = ?1")?;
+        let paths = stmt.query_map(
+            params![TaskStatus::RUNNING.to_string()],
+            |row| {
+                Ok(row.get::<_, String>(0)?)
+            }
+        )?;
+        let mut running_tasks = Vec::new();
+        for path in paths {
+            running_tasks.push(path?);
+        }
+
+        let paths = stmt.query_map(
+            params![TaskStatus::FAILED.to_string()],
+            |row| {
+                Ok(row.get::<_, String>(0)?)
+            }
+        )?;
+        let mut failed_tasks = Vec::new();
+        for path in paths {
+            failed_tasks.push(path?);
+        }
         Ok(TaskStatusStat {
-            pending: row.0,
-            running: row.1,
-            failed: row.2,
+            pending,
+            running,
+            failed,
+            running_tasks,
+            failed_tasks,
         })
     }
 
@@ -242,6 +300,8 @@ mod tests {
         assert_eq!(status.pending, 6);
         assert_eq!(status.running, 0);
         assert_eq!(status.failed, 0);
+        assert_eq!(status.running_tasks, Vec::<String>::new());
+        assert_eq!(status.failed_tasks, Vec::<String>::new());
     }
 
     #[test]
@@ -256,6 +316,8 @@ mod tests {
         assert_eq!(status.pending, 5);
         assert_eq!(status.running, 0);
         assert_eq!(status.failed, 0);
+        assert_eq!(status.running_tasks, Vec::<String>::new());
+        assert_eq!(status.failed_tasks, Vec::<String>::new());
 
         for _ in 0..5 {
             let _ = worker.process_task().unwrap();
@@ -264,11 +326,15 @@ mod tests {
         assert_eq!(status.pending, 0);
         assert_eq!(status.running, 0);
         assert_eq!(status.failed, 0);
+        assert_eq!(status.running_tasks, Vec::<String>::new());
+        assert_eq!(status.failed_tasks, Vec::<String>::new());
 
         let _ = worker.process_task();
         let status = worker.get_tasks_status().unwrap();
         assert_eq!(status.pending, 0);
         assert_eq!(status.running, 0);
         assert_eq!(status.failed, 0);
+        assert_eq!(status.running_tasks, Vec::<String>::new());
+        assert_eq!(status.failed_tasks, Vec::<String>::new());
     }
 }
