@@ -1,5 +1,5 @@
 use log4rs::{
-    append::rolling_file::policy::compound::{roll::{delete::DeleteRoller, fixed_window::FixedWindowRoller, Roll}, CompoundPolicy},
+    append::rolling_file::policy::compound::{roll::fixed_window::FixedWindowRoller, trigger::size::SizeTrigger, CompoundPolicy},
     config::{Appender, Config, Root},
     encode::pattern::PatternEncoder,
 };
@@ -25,9 +25,7 @@ pub fn init_logger() {
         level_filter = LevelFilter::Info;
     }
 
-    let trigger_config = log4rs::append::rolling_file::policy::compound::trigger::time::TimeTriggerConfig::default();
-    let trigger = log4rs::append::rolling_file::policy::compound::trigger::time::TimeTrigger::new(trigger_config);
-
+    let trigger = SizeTrigger::new(128 * 1024 * 1024);
     let roller = FixedWindowRoller::builder()
         .build(get_log_dir().join("deepindex_{}.log.gz").to_str().unwrap(), 7)
         .unwrap();
