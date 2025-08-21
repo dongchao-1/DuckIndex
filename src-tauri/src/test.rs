@@ -1,12 +1,10 @@
 #[cfg(test)]
 pub mod test{
-    use crate::config::AppConfig;
-    use crate::indexer::Indexer;
-    use crate::CONFIG;
+    use std::env;
     use tempfile::Builder;
-    use crate::sqlite::init_pool;
-    use crate::worker::Worker;
 
+    use crate::setup_backend;
+    
     pub struct TestEnv {
         #[allow(dead_code)]
         temp_dir: tempfile::TempDir,
@@ -17,17 +15,9 @@ pub mod test{
             let temp_dir = Builder::new()
                 .prefix(".deepindex_")  // 设置前缀
                 .tempdir().unwrap();        // 创建临时目录
-            
-            let config = AppConfig {
-                data_path: vec![String::from("../test_data")],
-                index_path: temp_dir.path().join("index").to_string_lossy().to_string(),
-            };
-            CONFIG.set(config).unwrap();
+            env::set_var("DEEPINDEX_TEST_DIR", temp_dir.path());
 
-            init_pool();
-
-            Indexer::check_or_init().unwrap();
-            Worker::check_or_init().unwrap();
+            setup_backend();
             
             TestEnv { temp_dir }
         }

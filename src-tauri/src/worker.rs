@@ -1,7 +1,11 @@
+use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
+use std::path::PathBuf;
 use std::thread;
 use anyhow::{anyhow, Result};
+use log::error;
+use log::info;
 use rusqlite::params;
 use strum::Display;
 use strum::EnumString;
@@ -13,12 +17,6 @@ use serde::Serialize;
 use crate::indexer::Indexer;
 use crate::reader::CompositeReader;
 use crate::sqlite::get_pool;
-
-#[cfg(windows)]
-use std::os::windows::fs::MetadataExt;
-
-#[cfg(windows)]
-const FILE_ATTRIBUTE_HIDDEN: u32 = 0x2;
 
 pub struct Worker {
     indexer: Indexer,
@@ -140,7 +138,7 @@ impl Worker {
     fn add_task(&self, task_type: &TaskType, path: &Path) -> Result<()> {
         let conn = get_pool()?;
 
-        let path = path.canonicalize()?.to_str().unwrap().to_string();
+        let path = path.to_str().unwrap().to_string();
         let now = Local::now().to_rfc3339();
         conn.execute(
             "INSERT INTO tasks (type, path, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
@@ -149,40 +147,110 @@ impl Worker {
         Ok(())
     }
 
+    fn split_dir_contents(&self, path: &Path) -> Result<(HashSet<PathBuf>, HashSet<PathBuf>)> {
+        let mut dirs: HashSet<PathBuf> = HashSet::new();
+        let mut files: HashSet<PathBuf> = HashSet::new();
+
+        for entry in fs::read_dir(path)? {
+            let entry = entry?;
+            let path = entry.path();
+
+            if path.is_dir() {
+                dirs.insert(path);
+            } else if path.is_file() {
+                files.insert(path);
+            }
+        }
+
+        Ok((dirs, files))
+    }
+
     pub fn submit_index_all_files(&self, path: &Path) -> Result<()> {
         if path.is_dir() {
-            self.add_task(&TaskType::DIRECTORY, path)?;
+            if let Ok(index_dir) = self.indexer.get_directory(path) {
+                // 数据库已经有这个目录了
+                let modified_time = self.indexer.get_modified_time(path)?;
+                if index_dir.modified_time != modified_time {
+                    info!("目录索引过，但目录时间发生变更。目录: {} 原时间: {} 现时间:{}", path.display(), index_dir.modified_time, modified_time);
+                    // 目录修改了
+                    let (index_sub_dirs, index_sub_files) = self.indexer.get_sub_directories_and_files(path)?;
+                    let (current_sub_dirs, current_sub_files) = self.split_dir_contents(path)?;
+
+                    let index_sub_dirs = HashSet::from_iter(index_sub_dirs.iter().map(
+                        |p| Path::new(&p.path).to_path_buf()
+                    ));
+                    let index_sub_files = HashSet::from_iter(index_sub_files.iter().map(
+                        |p| Path::new(&p.path).join(&p.name).to_path_buf()
+                    ));
+
+                    // for dir in current_sub_dirs.difference(&index_sub_dirs) {
+                    //     // 新增的目录
+                    //     self.submit_index_all_files(dir)?;
+                    // }
+                    for dir in index_sub_dirs.difference(&current_sub_dirs) {
+                        // 删除的目录
+                        self.indexer.delete_directory(dir)?;
+                    }
+                    // for dir in current_sub_dirs.intersection(&index_sub_dirs) {
+                    //     // 已索引过的目录
+                    //     self.submit_index_all_files(dir)?;
+                    // }
+
+                    // for file in current_sub_files.difference(&index_sub_files) {
+                    //     // 新增的文件
+                    //     if self.reader.supports(&file)? {
+                    //         self.add_task(&TaskType::FILE, &file)?;
+                    //     }
+                    // }
+                    for file in index_sub_files.difference(&current_sub_files) {
+                        // 删除的文件
+                        self.indexer.delete_file(file)?;
+                    }
+                    // for file in current_sub_files.intersection(&index_sub_files) {
+                    //     // 已索引过的文件
+                    //     let index_file = self.indexer.get_file(&file)?;
+                    //     let modified_time = self.indexer.get_modified_time(&file)?;
+                    //     if index_file.modified_time != modified_time {
+                    //         self.indexer.delete_file(file)?;
+                    //         self.add_task(&TaskType::FILE, &file)?;
+                    //     }
+                    // }
+                }
+
+            } else {
+                // 数据库中没有这个目录
+                info!("目录未索引，添加任务。目录: {}", path.display());
+                self.add_task(&TaskType::DIRECTORY, path)?;
+            }
+
             for entry in fs::read_dir(path)? {
                 let entry = entry?;
                 let path = entry.path();
-
-                #[cfg(windows)]
-                {
-
-                    let metadata = fs::metadata(&path)?;
-                    if metadata.file_attributes() & FILE_ATTRIBUTE_HIDDEN != 0 {
-                        continue;
-                    }
-                }
-
-                #[cfg(unix)]
-                {
-                    let file_name = path.file_name().unwrap_or_default().to_string_lossy();
-                    if file_name.starts_with('.') {
-                        continue;
-                    }
-                }
                 
                 if path.is_file() {
-                    if self.reader.supports(&path)? {
-                        self.add_task(&TaskType::FILE, &path)?;
+                    if let Ok(index_file) = self.indexer.get_file(&path) {
+                        let modified_time = self.indexer.get_modified_time(&path)?;
+                        if index_file.modified_time == modified_time {
+                            continue;
+                        } else {
+                            info!("文件索引过，但文件时间发生变更。文件: {} 原时间: {} 现时间:{}", path.display(), index_file.modified_time, modified_time);
+                            self.indexer.delete_file(&path)?;
+                            if self.reader.supports(&path)? {
+                                self.add_task(&TaskType::FILE, &path)?;
+                            }
+                        }
+                    } else {
+                        if self.reader.supports(&path)? {
+                            info!("文件未索引，添加任务。文件: {}", path.display());
+                            self.add_task(&TaskType::FILE, &path)?;
+                        }
                     }
                 } else if path.is_dir() {
                     self.submit_index_all_files(&path)?;
                 }
             }
         } else {
-            eprintln!("Path does not exist: {}", path.display());
+            error!("路径不存在: {}", path.display());
         }
         Ok(())
     }
@@ -230,7 +298,7 @@ impl Worker {
         let num_cpus = std::thread::available_parallelism()
             .map_or(1, |n| n.get());
         let num_threads = std::cmp::max(1, num_cpus / 2);
-        println!("Starting {} process threads", num_threads);
+        info!("启动 {} 索引线程", num_threads);
         for _ in 0..num_threads {
             std::thread::spawn(move || {
                 let worker = Worker::new().unwrap();
@@ -238,8 +306,8 @@ impl Worker {
                     match worker.process_task() {
                         Ok(_) => {}
                         Err(e) => {
-                            // TODO 失败处理
-                            eprintln!("Error processing task: {}", e);
+                            error!("处理任务失败: {}", e);
+                            error!("{}", e.backtrace());
                         }
                     }
                 }
@@ -334,7 +402,7 @@ mod tests {
         let _env = TestEnv::new();
         Worker::reset_worker().unwrap();
         let worker = Worker::new().unwrap();
-        worker.submit_index_all_files(Path::new("../test_data")).unwrap();
+        worker.submit_index_all_files(&Path::new("../test_data").canonicalize().unwrap()).unwrap();
 
         let _ = worker.process_task().unwrap();
         let status = worker.get_tasks_status().unwrap();

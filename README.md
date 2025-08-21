@@ -8,10 +8,10 @@ This template should help get you started developing with Vue 3 and TypeScript i
 
 ## setup
 pnpm install
-pnpm tauri dev
+$env:RUST_BACKTRACE = "1"; $env:DEEPINDEX_LOG_LEVEL = "info"; pnpm tauri dev
 
-cargo nextest run --manifest-path .\src-tauri\Cargo.toml
+$env:RUST_BACKTRACE = "1"; $env:DEEPINDEX_LOG_LEVEL = "info"; cargo nextest run --manifest-path .\src-tauri\Cargo.toml
 
 
 C:\Users\dongchao\AppData\Local\Temp
-C:\Users\dongchao\AppData\Roaming\com.dongchao.deepindex
+C:\Users\dongchao\AppData\Roaming\DeepIndex\data

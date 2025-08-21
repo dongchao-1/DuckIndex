@@ -1,20 +1,15 @@
-use std::{fs::create_dir_all, path::PathBuf};
-
 use once_cell::sync::OnceCell;
 use r2d2::{Pool, PooledConnection};
 use r2d2_sqlite::SqliteConnectionManager;
 use anyhow::Result;
 
-use crate::CONFIG;
+use crate::dirs::get_index_dir;
 
 // 全局静态变量
 static POOL: OnceCell<Pool<SqliteConnectionManager>> = OnceCell::new();
 
 pub fn init_pool() {
-    let sqlite_path = PathBuf::from(CONFIG.get().unwrap().index_path.clone());
-    if !sqlite_path.exists() {
-        create_dir_all(&sqlite_path).unwrap();
-    }
+    let sqlite_path = get_index_dir();
 
     let manager = SqliteConnectionManager::file(sqlite_path.join("index.db")).with_init(|conn| {
             // 启用 auto_vacuum (1 是 FULL 模式)

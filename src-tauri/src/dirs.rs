@@ -1,0 +1,61 @@
+use std::env;
+use std::path::PathBuf;
+
+use directories::ProjectDirs;
+
+// 定义公司和应用名称，用于确定日志路径
+const PROJECT_QUALIFIER: &str = "";
+const PROJECT_ORGANIZATION: &str = "";
+const PROJECT_APPLICATION: &str = "DeepIndex";
+
+pub fn get_project_dirs() -> PathBuf {
+    if let Ok(val) = env::var("DEEPINDEX_TEST_DIR") {
+        PathBuf::from(val)
+    } else {
+        ProjectDirs::from(
+            PROJECT_QUALIFIER,
+            PROJECT_ORGANIZATION,
+            PROJECT_APPLICATION,
+        ).unwrap().data_dir().to_path_buf()
+    }
+}
+
+pub fn get_index_dir() -> PathBuf {
+    let path = get_project_dirs().join("index");
+    if !path.exists() {
+        std::fs::create_dir_all(&path).unwrap();
+    }
+    path
+}
+
+pub fn get_log_dir() -> PathBuf {
+    let path = get_project_dirs().join("log");
+    if !path.exists() {
+        std::fs::create_dir_all(&path).unwrap();
+    }
+    path
+}
+
+#[cfg(test)]
+mod tests {
+
+    use crate::test::test::TestEnv;
+
+    use super::*;
+
+    #[test]
+    fn test_get_index_dir() {
+        let _env = TestEnv::new();
+        let index_dir = get_index_dir();
+        assert!(index_dir.exists());
+        // println!("Index directory: {:?}", index_dir);
+    }
+
+    #[test]
+    fn test_get_log_dir() {
+        let _env = TestEnv::new();
+        let log_dir = get_log_dir();
+        assert!(log_dir.exists());
+        // println!("Log directory: {:?}", log_dir);
+    }
+}

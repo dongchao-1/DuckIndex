@@ -111,12 +111,16 @@ impl Indexer {
         Ok(())
     }
 
+    pub fn get_modified_time(&self, path: &Path) -> Result<String> {
+        let modified_datetime: DateTime<Local> = DateTime::from(fs::metadata(path)?.modified()?);
+        Ok(modified_datetime.to_rfc3339())
+    }
+
     pub fn write_directory(&self, directory: &Path) -> Result<i64> {
         self.check_is_absolute(directory)?;
         let dir_name = directory.file_name().unwrap().to_str().unwrap();
         let dir_path = directory.to_str().unwrap();
-        let modified_datetime: DateTime<Local> = DateTime::from(fs::metadata(dir_path)?.modified()?);
-        let modified_time = modified_datetime.to_rfc3339();
+        let modified_time = self.get_modified_time(directory)?;
 
         let directory_id = get_pool()?.query_row(
             "INSERT INTO directories (name, path, modified_time) VALUES (?1, ?2, ?3) ON CONFLICT(path) DO UPDATE SET path = path RETURNING id",
@@ -141,18 +145,36 @@ impl Indexer {
         Ok(row)
     }
 
+    pub fn get_file(&self, file: &Path) -> Result<SearchResultFile> {
+        self.check_is_absolute(file)?;
+        let file_path = file.parent().unwrap().to_str().unwrap();
+        let file_name = file.file_name().unwrap().to_str().unwrap();
+        let conn = get_pool()?;
+        let mut stmt = conn.prepare(r"SELECT name, directories.path, modified_time 
+            FROM files
+            join directories
+            on files.directory_id = directories.id
+            WHERE directories.path = ?1 and files.name = ?2")?;
+        let row = stmt.query_row(params![file_path, file_name], |row| {
+            Ok(SearchResultFile {
+                name: row.get(0)?,
+                path: row.get(1)?,
+                modified_time: row.get(2)?,
+            })
+        })?;
+        Ok(row)
+    }
+
     pub fn write_file_items(&self, file: &Path, items: Vec<Item>) -> Result<()> {
         self.check_is_absolute(file)?;
-        let file = file.canonicalize().unwrap();
         let directory_id = self.write_directory(file.parent().unwrap())?;
         
         let file_name = file.file_name().unwrap().to_str().unwrap();
-        let modified_datetime: DateTime<Local> = DateTime::from(fs::metadata(&file)?.modified()?);
-        let modified_time = modified_datetime.to_rfc3339();
+        let modified_time = self.get_modified_time(&file)?;
 
         let conn = get_pool()?;
         let file_id: i64 = conn.query_row(
-            "INSERT INTO files (directory_id, name, modified_time) VALUES (?1, ?2, ?3) ON CONFLICT(directory_id, name) DO NOTHING RETURNING id",
+            "INSERT INTO files (directory_id, name, modified_time) VALUES (?1, ?2, ?3) ON CONFLICT(directory_id, name) DO UPDATE SET directory_id = directory_id RETURNING id",
             params![&directory_id, file_name, &modified_time],
             |row| row.get(0),
         )?;
@@ -415,7 +437,7 @@ mod tests {
         assert_eq!(dir_result.len(), 1);
         assert_eq!(file_result.len(), 1);
 
-        println!("dir_result: {:?}", dir_result);
+        // println!("dir_result: {:?}", dir_result);
     }
 
     #[test]
