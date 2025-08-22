@@ -2,6 +2,8 @@
 import { ref } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import { Window } from '@tauri-apps/api/window';
+import { open } from '@tauri-apps/plugin-dialog';
+import { TabsPaneContext } from "element-plus";
 
 console.log('Tauri and Vue are ready!');
 
@@ -9,7 +11,7 @@ const mainWindow = new Window('main');
 console.log('Main window:', mainWindow);
 
 mainWindow.listen("index-task-update", ({ event, payload }: { event: string; payload: unknown }) => { 
-  console.log('收到索引任务更新:', event, payload);
+  // console.log('收到索引任务更新:', event, payload);
 });
 
 const greetMsg = ref("");
@@ -21,6 +23,51 @@ async function search() {
 
 async function index_all_files() {
   greetMsg.value = await invoke("index_all_files", {});
+}
+
+interface TableRow {
+  path: string;
+}
+
+const tableData = ref<TableRow[]>([])
+
+async function refreshIndexPathTableData() {
+  const index_dir_paths: string[] = await invoke("get_index_dir_paths", {});
+  console.log('索引目录路径:', index_dir_paths);
+  tableData.value = index_dir_paths.map(path => ({ path }));
+}
+
+async function handleTabClick(pane: TabsPaneContext, _ev: Event) {
+  console.log('Tab clicked:', pane.props.label);
+  if (pane.props.label === "设置") {
+    await refreshIndexPathTableData();
+  }
+}
+
+async function handleDelIndexPathClick(path: string) {
+  console.log('Delete index path clicked:', path);
+  await invoke("del_index_path", {path});
+  await refreshIndexPathTableData();
+}
+
+async function handleAddIndexPathClick() {
+  try {
+    const selected = await open({
+      directory: true,
+      multiple: false,
+      title: '请选择一个目录',
+      // defaultPath: await homeDir(),
+    });
+
+    if (selected != null) {
+      console.log("Selected directory:", selected);
+      const result = await invoke("add_index_path", { path: selected });
+      console.log("Indexing result:", result);
+      await refreshIndexPathTableData();
+    }
+  } catch (error) {
+    console.error('打开目录选择对话框失败:', error);
+  }
 }
 
 </script>
@@ -44,7 +91,7 @@ async function index_all_files() {
 
     
 
-    <form class="row" @submit.prevent="index_all_files">
+    <!-- <form class="row" @submit.prevent="index_all_files">
       <button type="submit">重建所有索引</button>
     </form>
 
@@ -54,129 +101,34 @@ async function index_all_files() {
       <button type="submit">搜索</button>
     </form>
 
-    <p>{{ greetMsg }}</p>
+    -->
+
+    <div class="mb-4">
+
+      <el-tabs :tab-position='"top"' class="demo-tabs" @tab-click="handleTabClick">
+        <el-tab-pane label="搜索">
+            <el-input v-model="name" @input="search" size="default" placeholder="输入需要搜索的内容" />
+            <p>{{ greetMsg }}</p>
+        </el-tab-pane>
+        <el-tab-pane label="设置">
+          <el-text class="mx-1">索引路径</el-text>
+          <el-button type="primary" @click="handleAddIndexPathClick">增加</el-button>
+          <el-table :data="tableData" style="width: 100%">
+            <el-table-column prop="path" label="路径"/>
+            <el-table-column fixed="right" label="操作" width="100">
+              <template #default="{ row }">
+                <el-button link type="primary" size="small" @click="handleDelIndexPathClick(row.path)">
+                  删除
+                </el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+        </el-tab-pane>
+      </el-tabs>
+    </div>
+
   </main>
 </template>
 
 <style scoped>
-.logo.vite:hover {
-  filter: drop-shadow(0 0 2em #747bff);
-}
-
-.logo.vue:hover {
-  filter: drop-shadow(0 0 2em #249b73);
-}
-
-</style>
-<style>
-:root {
-  font-family: Inter, Avenir, Helvetica, Arial, sans-serif;
-  font-size: 16px;
-  line-height: 24px;
-  font-weight: 400;
-
-  color: #0f0f0f;
-  background-color: #f6f6f6;
-
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  -webkit-text-size-adjust: 100%;
-}
-
-.container {
-  margin: 0;
-  padding-top: 10vh;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  text-align: center;
-}
-
-.logo {
-  height: 6em;
-  padding: 1.5em;
-  will-change: filter;
-  transition: 0.75s;
-}
-
-.logo.tauri:hover {
-  filter: drop-shadow(0 0 2em #24c8db);
-}
-
-.row {
-  display: flex;
-  justify-content: center;
-}
-
-a {
-  font-weight: 500;
-  color: #646cff;
-  text-decoration: inherit;
-}
-
-a:hover {
-  color: #535bf2;
-}
-
-h1 {
-  text-align: center;
-}
-
-input,
-button {
-  border-radius: 8px;
-  border: 1px solid transparent;
-  padding: 0.6em 1.2em;
-  font-size: 1em;
-  font-weight: 500;
-  font-family: inherit;
-  color: #0f0f0f;
-  background-color: #ffffff;
-  transition: border-color 0.25s;
-  box-shadow: 0 2px 2px rgba(0, 0, 0, 0.2);
-}
-
-button {
-  cursor: pointer;
-}
-
-button:hover {
-  border-color: #396cd8;
-}
-button:active {
-  border-color: #396cd8;
-  background-color: #e8e8e8;
-}
-
-input,
-button {
-  outline: none;
-}
-
-#greet-input {
-  margin-right: 5px;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    color: #f6f6f6;
-    background-color: #2f2f2f;
-  }
-
-  a:hover {
-    color: #24c8db;
-  }
-
-  input,
-  button {
-    color: #ffffff;
-    background-color: #0f0f0f98;
-  }
-  button:active {
-    background-color: #0f0f0f69;
-  }
-}
-
 </style>

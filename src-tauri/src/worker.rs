@@ -1,18 +1,18 @@
+use anyhow::{anyhow, Result};
+use chrono::Local;
+use log::error;
+use log::info;
+use rusqlite::params;
+use serde::Serialize;
 use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
+use std::str::FromStr;
 use std::thread;
-use anyhow::{anyhow, Result};
-use log::error;
-use log::info;
-use rusqlite::params;
+use std::time::Duration;
 use strum::Display;
 use strum::EnumString;
-use chrono::Local;
-use std::str::FromStr;
-use std::time::Duration;
-use serde::Serialize;
 
 use crate::indexer::Indexer;
 use crate::reader::CompositeReader;
@@ -28,7 +28,7 @@ enum TaskType {
     #[strum(serialize = "DIRECTORY")]
     DIRECTORY,
     #[strum(serialize = "FILE")]
-    FILE
+    FILE,
 }
 
 #[derive(Debug, PartialEq, EnumString, Display)]
@@ -38,7 +38,7 @@ enum TaskStatus {
     #[strum(serialize = "RUNNING")]
     RUNNING,
     #[strum(serialize = "FAILED")]
-    FAILED
+    FAILED,
 }
 
 #[derive(Debug, Serialize)]
@@ -58,22 +58,26 @@ impl std::fmt::Display for TaskStatusStat {
 }
 
 impl Worker {
-
     pub fn check_or_init() -> Result<()> {
         if let Err(_) = Self::check_worker_init() {
             Self::reset_worker()?;
         }
         Ok(())
     }
-    
+
     fn check_worker_init() -> Result<()> {
         let conn = get_pool()?;
-        let row = conn.query_one("select version from worker_version", [], |row|
-            row.get::<_, String>(0)
-        ).map_err(|e| anyhow!("Worker not initialized: {}", e))?;
+        let row = conn
+            .query_one("select version from worker_version", [], |row| {
+                row.get::<_, String>(0)
+            })
+            .map_err(|e| anyhow!("Worker not initialized: {}", e))?;
 
         if row != "0.1" {
-            return Err(anyhow!("Worker version mismatch: expected 0.1, found {}", row));
+            return Err(anyhow!(
+                "Worker version mismatch: expected 0.1, found {}",
+                row
+            ));
         }
         Ok(())
     }
@@ -96,7 +100,8 @@ impl Worker {
                 version TEXT
             );
             INSERT INTO worker_version (version) VALUES ('0.1');
-        ")?;
+        ",
+        )?;
         Ok(())
     }
 
@@ -124,7 +129,11 @@ impl Worker {
 
         conn.execute(
             "UPDATE tasks SET status = ?1, updated_at = ?2 WHERE status = ?3",
-            params![TaskStatus::PENDING.to_string(), Local::now().to_rfc3339(), TaskStatus::RUNNING.to_string()]
+            params![
+                TaskStatus::PENDING.to_string(),
+                Local::now().to_rfc3339(),
+                TaskStatus::RUNNING.to_string()
+            ],
         )?;
         Ok(())
     }
@@ -142,7 +151,13 @@ impl Worker {
         let now = Local::now().to_rfc3339();
         conn.execute(
             "INSERT INTO tasks (type, path, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
-            params![task_type.to_string(), path, TaskStatus::PENDING.to_string(), now, now],
+            params![
+                task_type.to_string(),
+                path,
+                TaskStatus::PENDING.to_string(),
+                now,
+                now
+            ],
         )?;
         Ok(())
     }
@@ -171,17 +186,27 @@ impl Worker {
                 // 数据库已经有这个目录了
                 let modified_time = self.indexer.get_modified_time(path)?;
                 if index_dir.modified_time != modified_time {
-                    info!("目录索引过，但目录时间发生变更。目录: {} 原时间: {} 现时间:{}", path.display(), index_dir.modified_time, modified_time);
+                    info!(
+                        "目录索引过，但目录时间发生变更。目录: {} 原时间: {} 现时间:{}",
+                        path.display(),
+                        index_dir.modified_time,
+                        modified_time
+                    );
                     // 目录修改了
-                    let (index_sub_dirs, index_sub_files) = self.indexer.get_sub_directories_and_files(path)?;
+                    let (index_sub_dirs, index_sub_files) =
+                        self.indexer.get_sub_directories_and_files(path)?;
                     let (current_sub_dirs, current_sub_files) = self.split_dir_contents(path)?;
 
-                    let index_sub_dirs = HashSet::from_iter(index_sub_dirs.iter().map(
-                        |p| Path::new(&p.path).to_path_buf()
-                    ));
-                    let index_sub_files = HashSet::from_iter(index_sub_files.iter().map(
-                        |p| Path::new(&p.path).join(&p.name).to_path_buf()
-                    ));
+                    let index_sub_dirs = HashSet::from_iter(
+                        index_sub_dirs
+                            .iter()
+                            .map(|p| Path::new(&p.path).to_path_buf()),
+                    );
+                    let index_sub_files = HashSet::from_iter(
+                        index_sub_files
+                            .iter()
+                            .map(|p| Path::new(&p.path).join(&p.name).to_path_buf()),
+                    );
 
                     // for dir in current_sub_dirs.difference(&index_sub_dirs) {
                     //     // 新增的目录
@@ -216,7 +241,6 @@ impl Worker {
                     //     }
                     // }
                 }
-
             } else {
                 // 数据库中没有这个目录
                 info!("目录未索引，添加任务。目录: {}", path.display());
@@ -226,14 +250,19 @@ impl Worker {
             for entry in fs::read_dir(path)? {
                 let entry = entry?;
                 let path = entry.path();
-                
+
                 if path.is_file() {
                     if let Ok(index_file) = self.indexer.get_file(&path) {
                         let modified_time = self.indexer.get_modified_time(&path)?;
                         if index_file.modified_time == modified_time {
                             continue;
                         } else {
-                            info!("文件索引过，但文件时间发生变更。文件: {} 原时间: {} 现时间:{}", path.display(), index_file.modified_time, modified_time);
+                            info!(
+                                "文件索引过，但文件时间发生变更。文件: {} 原时间: {} 现时间:{}",
+                                path.display(),
+                                index_file.modified_time,
+                                modified_time
+                            );
                             self.indexer.delete_file(&path)?;
                             if self.reader.supports(&path)? {
                                 self.add_task(&TaskType::FILE, &path)?;
@@ -262,25 +291,19 @@ impl Worker {
             |row| {
                 Ok((row.get(0)?, row.get(1)?, row.get(2)?))
             }).unwrap_or((0, 0, 0));
-        
+
         let mut stmt = conn.prepare("SELECT path FROM tasks WHERE status = ?1")?;
-        let paths = stmt.query_map(
-            params![TaskStatus::RUNNING.to_string()],
-            |row| {
-                Ok(row.get::<_, String>(0)?)
-            }
-        )?;
+        let paths = stmt.query_map(params![TaskStatus::RUNNING.to_string()], |row| {
+            Ok(row.get::<_, String>(0)?)
+        })?;
         let mut running_tasks = Vec::new();
         for path in paths {
             running_tasks.push(path?);
         }
 
-        let paths = stmt.query_map(
-            params![TaskStatus::FAILED.to_string()],
-            |row| {
-                Ok(row.get::<_, String>(0)?)
-            }
-        )?;
+        let paths = stmt.query_map(params![TaskStatus::FAILED.to_string()], |row| {
+            Ok(row.get::<_, String>(0)?)
+        })?;
         let mut failed_tasks = Vec::new();
         for path in paths {
             failed_tasks.push(path?);
@@ -295,8 +318,7 @@ impl Worker {
     }
 
     pub fn start_process() -> Result<()> {
-        let num_cpus = std::thread::available_parallelism()
-            .map_or(1, |n| n.get());
+        let num_cpus = std::thread::available_parallelism().map_or(1, |n| n.get());
         let num_threads = std::cmp::max(1, num_cpus / 2);
         info!("启动 {} 索引线程", num_threads);
         for _ in 0..num_threads {
@@ -318,7 +340,8 @@ impl Worker {
 
     fn process_task(&self) -> Result<()> {
         let conn = get_pool()?;
-        let task = conn.query_row(r"UPDATE tasks
+        let task = conn.query_row(
+            r"UPDATE tasks
             SET status = ?1, updated_at = ?2
             WHERE id = (
                 SELECT id FROM tasks 
@@ -326,18 +349,22 @@ impl Worker {
                 ORDER BY id
                 LIMIT 1
             )
-            RETURNING id, type, path", 
-            params![TaskStatus::RUNNING.to_string(), Local::now().to_rfc3339(), TaskStatus::PENDING.to_string()], 
+            RETURNING id, type, path",
+            params![
+                TaskStatus::RUNNING.to_string(),
+                Local::now().to_rfc3339(),
+                TaskStatus::PENDING.to_string()
+            ],
             |row| {
                 let id = row.get::<_, i64>(0)?;
                 let task_type = row.get::<_, String>(1)?;
                 let path = row.get::<_, String>(2)?;
                 Ok((id, task_type, path))
-            }
+            },
         );
 
         match task {
-            Ok((id, task_type, path)) => {               
+            Ok((id, task_type, path)) => {
                 let path = Path::new(&path);
                 let task_type = TaskType::from_str(&task_type).unwrap();
                 match task_type {
@@ -367,27 +394,29 @@ impl Worker {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{test::test::TestEnv};
+    use crate::test::test::TestEnv;
 
     #[test]
     fn test_index_all_files() {
         let _env = TestEnv::new();
         Worker::reset_worker().unwrap();
         let worker = Worker::new().unwrap();
-        worker.submit_index_all_files(Path::new("../test_data")).unwrap();
+        worker
+            .submit_index_all_files(Path::new("../test_data"))
+            .unwrap();
     }
 
-    
     #[test]
     fn test_get_tasks_status() {
         let _env = TestEnv::new();
         Worker::reset_worker().unwrap();
         let worker = Worker::new().unwrap();
-        worker.submit_index_all_files(Path::new("../test_data")).unwrap();
+        worker
+            .submit_index_all_files(Path::new("../test_data"))
+            .unwrap();
 
         let status = worker.get_tasks_status().unwrap();
         assert_eq!(status.pending, 6);
@@ -402,7 +431,9 @@ mod tests {
         let _env = TestEnv::new();
         Worker::reset_worker().unwrap();
         let worker = Worker::new().unwrap();
-        worker.submit_index_all_files(&Path::new("../test_data").canonicalize().unwrap()).unwrap();
+        worker
+            .submit_index_all_files(&Path::new("../test_data").canonicalize().unwrap())
+            .unwrap();
 
         let _ = worker.process_task().unwrap();
         let status = worker.get_tasks_status().unwrap();

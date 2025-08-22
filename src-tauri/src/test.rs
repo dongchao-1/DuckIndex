@@ -1,10 +1,10 @@
 #[cfg(test)]
-pub mod test{
+pub mod test {
     use std::env;
     use tempfile::Builder;
 
     use crate::setup_backend;
-    
+
     pub struct TestEnv {
         #[allow(dead_code)]
         temp_dir: tempfile::TempDir,
@@ -13,12 +13,13 @@ pub mod test{
     impl TestEnv {
         pub fn new() -> Self {
             let temp_dir = Builder::new()
-                .prefix(".deepindex_")  // 设置前缀
-                .tempdir().unwrap();        // 创建临时目录
+                .prefix(".deepindex_") // 设置前缀
+                .tempdir()
+                .unwrap(); // 创建临时目录
             env::set_var("DEEPINDEX_TEST_DIR", temp_dir.path());
 
             setup_backend();
-            
+
             TestEnv { temp_dir }
         }
     }

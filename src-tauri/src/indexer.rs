@@ -1,9 +1,8 @@
-
-use std::fs;
-use std::path::Path;
+use anyhow::{anyhow, Result};
 use chrono::{DateTime, Local};
 use rusqlite::params;
-use anyhow::{anyhow, Result};
+use std::fs;
+use std::path::Path;
 
 use crate::reader::Item;
 use crate::sqlite::get_pool;
@@ -38,27 +37,29 @@ pub enum SearchResult {
     Item(SearchResultItem),
 }
 
-pub struct Indexer {
-}
-
+pub struct Indexer {}
 
 impl Indexer {
-
     pub fn check_or_init() -> Result<()> {
         if let Err(_) = Self::check_indexer_init() {
             Self::reset_indexer()?;
         }
         Ok(())
     }
-    
+
     fn check_indexer_init() -> Result<()> {
         let conn = get_pool()?;
-        let row = conn.query_one("select version from indexer_version", [], |row|
-            row.get::<_, String>(0)
-        ).map_err(|e| anyhow!("Indexer not initialized: {}", e))?;
+        let row = conn
+            .query_one("select version from indexer_version", [], |row| {
+                row.get::<_, String>(0)
+            })
+            .map_err(|e| anyhow!("Indexer not initialized: {}", e))?;
 
         if row != "0.1" {
-            return Err(anyhow!("Indexer version mismatch: expected 0.1, found {}", row));
+            return Err(anyhow!(
+                "Indexer version mismatch: expected 0.1, found {}",
+                row
+            ));
         }
         Ok(())
     }
@@ -96,10 +97,11 @@ impl Indexer {
                 version TEXT
             );
             INSERT INTO indexer_version (version) VALUES ('0.1');
-        ")?;
+        ",
+        )?;
         Ok(())
     }
-    
+
     pub fn new() -> Result<Self> {
         Ok(Indexer {})
     }
@@ -134,7 +136,8 @@ impl Indexer {
         self.check_is_absolute(directory)?;
         let dir_path = directory.to_str().unwrap();
         let conn = get_pool()?;
-        let mut stmt = conn.prepare("SELECT name, path, modified_time FROM directories WHERE path = ?1")?;
+        let mut stmt =
+            conn.prepare("SELECT name, path, modified_time FROM directories WHERE path = ?1")?;
         let row = stmt.query_row(params![dir_path], |row| {
             Ok(SearchResultDirectory {
                 name: row.get(0)?,
@@ -150,11 +153,13 @@ impl Indexer {
         let file_path = file.parent().unwrap().to_str().unwrap();
         let file_name = file.file_name().unwrap().to_str().unwrap();
         let conn = get_pool()?;
-        let mut stmt = conn.prepare(r"SELECT name, directories.path, modified_time 
+        let mut stmt = conn.prepare(
+            r"SELECT name, directories.path, modified_time 
             FROM files
             join directories
             on files.directory_id = directories.id
-            WHERE directories.path = ?1 and files.name = ?2")?;
+            WHERE directories.path = ?1 and files.name = ?2",
+        )?;
         let row = stmt.query_row(params![file_path, file_name], |row| {
             Ok(SearchResultFile {
                 name: row.get(0)?,
@@ -168,7 +173,7 @@ impl Indexer {
     pub fn write_file_items(&self, file: &Path, items: Vec<Item>) -> Result<()> {
         self.check_is_absolute(file)?;
         let directory_id = self.write_directory(file.parent().unwrap())?;
-        
+
         let file_name = file.file_name().unwrap().to_str().unwrap();
         let modified_time = self.get_modified_time(&file)?;
 
@@ -181,9 +186,8 @@ impl Indexer {
         // println!("write_file_items File ID: {}", file_id);
 
         for chunk in items.chunks(1000) {
-            let mut query = String::from(
-                "INSERT INTO items (file_id, page, line, content) VALUES ",
-            );
+            let mut query =
+                String::from("INSERT INTO items (file_id, page, line, content) VALUES ");
 
             // 构建 VALUES 部分 (?, ?, ?, ?), (?, ?, ?, ?), ...
             let values: Vec<String> = (0..chunk.len())
@@ -209,7 +213,10 @@ impl Indexer {
         Ok(())
     }
 
-    pub fn get_sub_directories_and_files(&self, directory: &Path) -> Result<(Vec<SearchResultDirectory>, Vec<SearchResultFile>)> {
+    pub fn get_sub_directories_and_files(
+        &self,
+        directory: &Path,
+    ) -> Result<(Vec<SearchResultDirectory>, Vec<SearchResultFile>)> {
         self.check_is_absolute(directory)?;
 
         let mut dirs = Vec::new();
@@ -217,7 +224,9 @@ impl Indexer {
 
         let dir_path = directory.to_str().unwrap();
         let conn = get_pool()?;
-        let mut stmt = conn.prepare("SELECT name, path, modified_time FROM directories WHERE path != ?1 AND path LIKE ?2")?;
+        let mut stmt = conn.prepare(
+            "SELECT name, path, modified_time FROM directories WHERE path != ?1 AND path LIKE ?2",
+        )?;
         let rows = stmt.query_map(params![dir_path, format!("{}%", dir_path)], |row| {
             Ok(SearchResultDirectory {
                 name: row.get(0)?,
@@ -230,11 +239,13 @@ impl Indexer {
             dirs.push(row?);
         }
 
-        let mut stmt = conn.prepare(r"SELECT files.name, directories.path, files.modified_time 
+        let mut stmt = conn.prepare(
+            r"SELECT files.name, directories.path, files.modified_time 
             FROM files
             JOIN directories
             ON files.directory_id = directories.id
-            WHERE directories.path = ?1")?;
+            WHERE directories.path = ?1",
+        )?;
         let rows = stmt.query_map(params![dir_path], |row| {
             Ok(SearchResultFile {
                 name: row.get(0)?,
@@ -255,7 +266,10 @@ impl Indexer {
 
         let conn = get_pool()?;
 
-        let sql = format!("SELECT name, path, modified_time FROM directories WHERE name LIKE '%{}%' LIMIT {}", content, limit);
+        let sql = format!(
+            "SELECT name, path, modified_time FROM directories WHERE name LIKE '%{}%' LIMIT {}",
+            content, limit
+        );
         // println!("SQL for directory search: {}", sql);
         let mut stmt = conn.prepare(&sql)?;
         let rows = stmt.query_map([], |row| {
@@ -271,11 +285,14 @@ impl Indexer {
         }
         // println!("directories result: {:?}", result);
 
-        let sql = format!(r"SELECT files.name, directories.path, files.modified_time
+        let sql = format!(
+            r"SELECT files.name, directories.path, files.modified_time
             FROM files
             left outer join directories
             on files.directory_id = directories.id
-            WHERE files.name LIKE '%{}%' LIMIT {}", content, limit);
+            WHERE files.name LIKE '%{}%' LIMIT {}",
+            content, limit
+        );
         // println!("SQL for file search: {}", sql);
         let mut stmt = conn.prepare(&sql)?;
         let rows = stmt.query_map([], |row| {
@@ -291,11 +308,14 @@ impl Indexer {
         }
         // println!("files result: {:?}", result);
 
-        let sql = format!(r"SELECT items.page, items.line, items.content, files.name, directories.path
+        let sql = format!(
+            r"SELECT items.page, items.line, items.content, files.name, directories.path
             FROM items
             LEFT OUTER JOIN files ON items.file_id = files.id
             LEFT OUTER JOIN directories ON files.directory_id = directories.id
-            WHERE items.content LIKE '%{}%' LIMIT {}", content, limit);
+            WHERE items.content LIKE '%{}%' LIMIT {}",
+            content, limit
+        );
         // println!("SQL for item search: {}", sql);
         let mut stmt = conn.prepare(&sql)?;
         let rows = stmt.query_map([], |row| {
@@ -330,12 +350,11 @@ impl Indexer {
         conn.execute(
             "DELETE FROM items WHERE file_id = ?1",
             &[&file_id.to_string()],
-        ).unwrap();
+        )
+        .unwrap();
 
-        conn.execute(
-            "DELETE FROM files WHERE id = ?1",
-            &[&file_id.to_string()],
-        ).unwrap();
+        conn.execute("DELETE FROM files WHERE id = ?1", &[&file_id.to_string()])
+            .unwrap();
 
         Ok(())
     }
@@ -355,10 +374,7 @@ impl Indexer {
 
         let dir_path = directory.to_str().unwrap();
         let conn = get_pool()?;
-        conn.execute(
-            "DELETE FROM directories WHERE path = ?1",
-            params![dir_path],
-        )?;
+        conn.execute("DELETE FROM directories WHERE path = ?1", params![dir_path])?;
 
         Ok(())
     }
@@ -388,7 +404,7 @@ mod tests {
         let path = Path::new("../test_data/").canonicalize().unwrap();
         indexer.write_directory(&path).unwrap();
     }
-    
+
     #[test]
     fn test_get_directory() {
         let _env = TestEnv::new();
@@ -410,8 +426,16 @@ mod tests {
         indexer.write_directory(file.parent().unwrap()).unwrap();
 
         let items = vec![
-            Item { page: 0, line: 1, content: "Hello, world!".into() },
-            Item { page: 0, line: 2, content: "This is a test.".into() },
+            Item {
+                page: 0,
+                line: 1,
+                content: "Hello, world!".into(),
+            },
+            Item {
+                page: 0,
+                line: 2,
+                content: "This is a test.".into(),
+            },
         ];
         indexer.write_file_items(&file, items).unwrap();
     }
@@ -425,15 +449,25 @@ mod tests {
         indexer.write_directory(file.parent().unwrap()).unwrap();
 
         let items = vec![
-            Item { page: 0, line: 1, content: "Hello, world!".into() },
-            Item { page: 0, line: 2, content: "This is a test.".into() },
+            Item {
+                page: 0,
+                line: 1,
+                content: "Hello, world!".into(),
+            },
+            Item {
+                page: 0,
+                line: 2,
+                content: "This is a test.".into(),
+            },
         ];
         indexer.write_file_items(&file, items).unwrap();
 
         let sub_dir_path = Path::new("../test_data/office/").canonicalize().unwrap();
         indexer.write_directory(&sub_dir_path).unwrap();
 
-        let (dir_result, file_result) = indexer.get_sub_directories_and_files(file.parent().unwrap()).unwrap();
+        let (dir_result, file_result) = indexer
+            .get_sub_directories_and_files(file.parent().unwrap())
+            .unwrap();
         assert_eq!(dir_result.len(), 1);
         assert_eq!(file_result.len(), 1);
 
@@ -463,8 +497,16 @@ mod tests {
         let _env = TestEnv::new();
         let indexer = Indexer::new().unwrap();
         let items = vec![
-            Item { page: 0, line: 1, content: "Hello, world!".into() },
-            Item { page: 0, line: 2, content: "This is a test.".into() },
+            Item {
+                page: 0,
+                line: 1,
+                content: "Hello, world!".into(),
+            },
+            Item {
+                page: 0,
+                line: 2,
+                content: "This is a test.".into(),
+            },
         ];
         let file = Path::new("../test_data/1.txt").canonicalize().unwrap();
         indexer.write_directory(file.parent().unwrap()).unwrap();
@@ -475,7 +517,15 @@ mod tests {
         match &result[0] {
             SearchResult::File(f) => {
                 assert_eq!(f.name, "1.txt");
-                assert_eq!(f.path, file.parent().unwrap().canonicalize().unwrap().to_str().unwrap());
+                assert_eq!(
+                    f.path,
+                    file.parent()
+                        .unwrap()
+                        .canonicalize()
+                        .unwrap()
+                        .to_str()
+                        .unwrap()
+                );
             }
             _ => panic!("Expected file result"),
         }
@@ -486,8 +536,16 @@ mod tests {
         let _env = TestEnv::new();
         let indexer = Indexer::new().unwrap();
         let items = vec![
-            Item { page: 0, line: 1, content: "Hello, world!".into() },
-            Item { page: 0, line: 2, content: "This is a test.".into() },
+            Item {
+                page: 0,
+                line: 1,
+                content: "Hello, world!".into(),
+            },
+            Item {
+                page: 0,
+                line: 2,
+                content: "This is a test.".into(),
+            },
         ];
         let file = Path::new("../test_data/1.txt").canonicalize().unwrap();
         indexer.write_directory(file.parent().unwrap()).unwrap();
@@ -495,12 +553,23 @@ mod tests {
 
         let result = indexer.search("world", 10).unwrap();
         assert_eq!(result.len(), 1);
-        assert_eq!(result[0], SearchResult::Item(SearchResultItem { page: 0,
-            line: 1, 
-            content: "Hello, world!".into(),
-            file: "1.txt".into(),
-            path: file.parent().unwrap().canonicalize().unwrap().to_str().unwrap().into(),
-        }));
+        assert_eq!(
+            result[0],
+            SearchResult::Item(SearchResultItem {
+                page: 0,
+                line: 1,
+                content: "Hello, world!".into(),
+                file: "1.txt".into(),
+                path: file
+                    .parent()
+                    .unwrap()
+                    .canonicalize()
+                    .unwrap()
+                    .to_str()
+                    .unwrap()
+                    .into(),
+            })
+        );
     }
 
     #[test]
@@ -508,8 +577,16 @@ mod tests {
         let _env = TestEnv::new();
         let indexer = Indexer::new().unwrap();
         let items = vec![
-            Item { page: 0, line: 1, content: "Hello, world!".into() },
-            Item { page: 0, line: 2, content: "This is a test.".into() },
+            Item {
+                page: 0,
+                line: 1,
+                content: "Hello, world!".into(),
+            },
+            Item {
+                page: 0,
+                line: 2,
+                content: "This is a test.".into(),
+            },
         ];
         let file = Path::new("../test_data/1.txt").canonicalize().unwrap();
         indexer.write_directory(file.parent().unwrap()).unwrap();
@@ -517,7 +594,9 @@ mod tests {
 
         indexer.delete_file(&file).unwrap();
 
-        let (dir_result, file_result) = indexer.get_sub_directories_and_files(file.parent().unwrap()).unwrap();
+        let (dir_result, file_result) = indexer
+            .get_sub_directories_and_files(file.parent().unwrap())
+            .unwrap();
         assert_eq!(dir_result.len(), 0);
         assert_eq!(file_result.len(), 0);
     }
@@ -527,19 +606,30 @@ mod tests {
         let _env = TestEnv::new();
         let indexer = Indexer::new().unwrap();
         let items = vec![
-            Item { page: 0, line: 1, content: "Hello, world!".into() },
-            Item { page: 0, line: 2, content: "This is a test.".into() },
+            Item {
+                page: 0,
+                line: 1,
+                content: "Hello, world!".into(),
+            },
+            Item {
+                page: 0,
+                line: 2,
+                content: "This is a test.".into(),
+            },
         ];
         let file = Path::new("../test_data/1.txt").canonicalize().unwrap();
         indexer.write_directory(file.parent().unwrap()).unwrap();
         indexer.write_file_items(&file, items).unwrap();
-        indexer.write_directory(&Path::new("../test_data/office/").canonicalize().unwrap()).unwrap();
+        indexer
+            .write_directory(&Path::new("../test_data/office/").canonicalize().unwrap())
+            .unwrap();
 
         indexer.delete_directory(file.parent().unwrap()).unwrap();
 
-        let (dir_result, file_result) = indexer.get_sub_directories_and_files(file.parent().unwrap()).unwrap();
+        let (dir_result, file_result) = indexer
+            .get_sub_directories_and_files(file.parent().unwrap())
+            .unwrap();
         assert_eq!(dir_result.len(), 0);
         assert_eq!(file_result.len(), 0);
     }
-
 }

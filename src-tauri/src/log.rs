@@ -1,10 +1,12 @@
+use log::LevelFilter;
 use log4rs::{
-    append::rolling_file::policy::compound::{roll::fixed_window::FixedWindowRoller, trigger::size::SizeTrigger, CompoundPolicy},
+    append::rolling_file::policy::compound::{
+        roll::fixed_window::FixedWindowRoller, trigger::size::SizeTrigger, CompoundPolicy,
+    },
     config::{Appender, Config, Root},
     encode::pattern::PatternEncoder,
 };
 use std::env;
-use log::LevelFilter;
 
 use crate::dirs::get_log_dir;
 
@@ -27,7 +29,10 @@ pub fn init_logger() {
 
     let trigger = SizeTrigger::new(128 * 1024 * 1024);
     let roller = FixedWindowRoller::builder()
-        .build(get_log_dir().join("deepindex_{}.log.gz").to_str().unwrap(), 7)
+        .build(
+            get_log_dir().join("deepindex_{}.log.gz").to_str().unwrap(),
+            7,
+        )
         .unwrap();
 
     let policy = CompoundPolicy::new(Box::new(trigger), Box::new(roller));
@@ -38,24 +43,20 @@ pub fn init_logger() {
         appender = Box::new(
             log4rs::append::console::ConsoleAppender::builder()
                 .encoder(Box::new(PatternEncoder::new(pattern)))
-                .build()
+                .build(),
         );
     } else {
         appender = Box::new(
             log4rs::append::rolling_file::RollingFileAppender::builder()
                 .encoder(Box::new(PatternEncoder::new(pattern)))
                 .build(get_log_dir().join("deepindex.log"), Box::new(policy))
-                .unwrap()
+                .unwrap(),
         );
     }
 
     let log_config = Config::builder()
         .appender(Appender::builder().build("appender", appender))
-        .build(
-            Root::builder()
-                .appender("appender")
-                .build(level_filter),
-        )
+        .build(Root::builder().appender("appender").build(level_filter))
         .unwrap();
 
     log4rs::init_config(log_config).unwrap();
@@ -63,8 +64,8 @@ pub fn init_logger() {
 
 #[cfg(test)]
 mod tests {
-    use log::{info, debug, error, trace, warn};
     use crate::test::test::TestEnv;
+    use log::{debug, error, info, trace, warn};
 
     #[test]
     fn test_init_logger() {

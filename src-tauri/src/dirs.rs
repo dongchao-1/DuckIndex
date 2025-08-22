@@ -12,11 +12,10 @@ pub fn get_project_dirs() -> PathBuf {
     if let Ok(val) = env::var("DEEPINDEX_TEST_DIR") {
         PathBuf::from(val)
     } else {
-        ProjectDirs::from(
-            PROJECT_QUALIFIER,
-            PROJECT_ORGANIZATION,
-            PROJECT_APPLICATION,
-        ).unwrap().data_dir().to_path_buf()
+        ProjectDirs::from(PROJECT_QUALIFIER, PROJECT_ORGANIZATION, PROJECT_APPLICATION)
+            .unwrap()
+            .data_dir()
+            .to_path_buf()
     }
 }
 

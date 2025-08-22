@@ -1,16 +1,15 @@
-use std::sync::Arc;
-use std::path::Path;
-use std::collections::{HashMap, HashSet};
-use std::{fs, vec};
-use std::fs::File;
-use std::io::{BufRead, BufReader};
-use tempfile::TempDir;
-use zip::ZipArchive;
+use anyhow::{anyhow, Result};
+use lopdf::Document as pdfDocument;
 use quick_xml::events::Event as quickXmlEvent;
 use quick_xml::Reader as quickXmlReader;
-use lopdf::Document as pdfDocument;
-use anyhow::{anyhow, Result};
-
+use std::collections::{HashMap, HashSet};
+use std::fs::File;
+use std::io::{BufRead, BufReader};
+use std::path::Path;
+use std::sync::Arc;
+use std::{fs, vec};
+use tempfile::TempDir;
+use zip::ZipArchive;
 
 #[derive(Debug)]
 pub struct Item {
@@ -18,7 +17,6 @@ pub struct Item {
     pub line: u64,
     pub content: String,
 }
-
 
 pub trait Reader {
     fn read(&self, file_path: &Path) -> Result<Vec<Item>>;
@@ -32,7 +30,12 @@ pub struct CompositeReader {
 
 impl CompositeReader {
     pub fn new() -> Result<Self> {
-        let readers: Vec<Arc<dyn Reader>> = vec![Arc::new(TxtReader), Arc::new(DocxReader), Arc::new(PdfReader), Arc::new(PptxReader)];
+        let readers: Vec<Arc<dyn Reader>> = vec![
+            Arc::new(TxtReader),
+            Arc::new(DocxReader),
+            Arc::new(PdfReader),
+            Arc::new(PptxReader),
+        ];
         let mut reader_map: HashMap<String, Arc<dyn Reader>> = HashMap::new();
         for reader in readers {
             for ext in reader.supports() {
@@ -40,7 +43,10 @@ impl CompositeReader {
             }
         }
         let supports_ext = reader_map.keys().cloned().collect();
-        Ok(CompositeReader { reader_map, supports_ext })
+        Ok(CompositeReader {
+            reader_map,
+            supports_ext,
+        })
     }
 
     pub fn supports(&self, file: &Path) -> Result<bool> {
@@ -85,7 +91,6 @@ impl Reader for TxtReader {
     }
 }
 
-
 struct DocxReader;
 impl Reader for DocxReader {
     fn read(&self, file_path: &Path) -> Result<Vec<Item>> {
@@ -93,7 +98,6 @@ impl Reader for DocxReader {
         let file = File::open(file_path)?;
         let mut archive = ZipArchive::new(file)?;
         archive.extract(&temp_dir)?;
-
 
         // 提取 document.xml
         let document_path = temp_dir.path().join("word/document.xml");
@@ -120,7 +124,7 @@ impl Reader for DocxReader {
                         items.push(item);
                     }
                     break;
-                }, // 文件结束
+                } // 文件结束
                 _ => (),
             }
             buf.clear();
@@ -154,7 +158,6 @@ impl DocxReader {
     }
 }
 
-
 struct PptxReader;
 impl Reader for PptxReader {
     fn read(&self, file_path: &Path) -> Result<Vec<Item>> {
@@ -177,7 +180,8 @@ impl Reader for PptxReader {
                     if file_name.starts_with("slide") && file_name.ends_with(".xml") {
                         if let Some(number_str) = file_name
                             .strip_prefix("slide")
-                            .and_then(|s| s.strip_suffix(".xml")) {
+                            .and_then(|s| s.strip_suffix(".xml"))
+                        {
                             if let Ok(page_number) = number_str.parse::<u64>() {
                                 let reader = BufReader::new(File::open(entry.path())?);
                                 let mut xml_reader = quickXmlReader::from_reader(reader);
@@ -185,7 +189,9 @@ impl Reader for PptxReader {
                                 loop {
                                     match xml_reader.read_event_into(&mut buf)? {
                                         quickXmlEvent::Start(e) if e.name().as_ref() == b"a:p" => {
-                                            if let Some(item) = self.create_item(&mut txt, page_number) {
+                                            if let Some(item) =
+                                                self.create_item(&mut txt, page_number)
+                                            {
                                                 items.push(item);
                                             }
                                         }
@@ -193,11 +199,13 @@ impl Reader for PptxReader {
                                             txt.push_str(&e.decode()?);
                                         }
                                         quickXmlEvent::Eof => {
-                                            if let Some(item) = self.create_item(&mut txt, page_number) {
+                                            if let Some(item) =
+                                                self.create_item(&mut txt, page_number)
+                                            {
                                                 items.push(item);
                                             }
                                             break;
-                                        }, // 文件结束
+                                        } // 文件结束
                                         _ => (),
                                     }
                                     buf.clear();
@@ -234,7 +242,6 @@ impl PptxReader {
     }
 }
 
-
 struct PdfReader;
 impl Reader for PdfReader {
     fn read(&self, file_path: &Path) -> Result<Vec<Item>> {
@@ -259,8 +266,13 @@ impl Reader for PdfReader {
 
         for (i, line) in lines.iter().enumerate() {
             result.push_str(line);
-            if i < lines.len() - 1 { // 不是最后一行
-                if line.chars().last().map_or(false, |c| c.is_ascii_alphabetic()) {
+            if i < lines.len() - 1 {
+                // 不是最后一行
+                if line
+                    .chars()
+                    .last()
+                    .map_or(false, |c| c.is_ascii_alphabetic())
+                {
                     result.push(' '); // 英文行尾加空格
                 }
             }
@@ -280,7 +292,6 @@ impl Reader for PdfReader {
         vec!["pdf"]
     }
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -313,7 +324,9 @@ mod tests {
     fn test_docx_reader() {
         let reader = DocxReader;
         assert_eq!(reader.supports(), vec!["docx"]);
-        let items = reader.read(Path::new("../test_data/office/test.docx")).unwrap();
+        let items = reader
+            .read(Path::new("../test_data/office/test.docx"))
+            .unwrap();
         // println!("Items: {:?}", items);
         assert_eq!(items.len(), 10);
     }
@@ -322,7 +335,9 @@ mod tests {
     fn test_pptx_reader() {
         let reader = PptxReader;
         assert_eq!(reader.supports(), vec!["pptx"]);
-        let items = reader.read(Path::new("../test_data/office/test.pptx")).unwrap();
+        let items = reader
+            .read(Path::new("../test_data/office/test.pptx"))
+            .unwrap();
         // println!("Items: {:?}", items);
         assert_eq!(items.len(), 5);
     }
