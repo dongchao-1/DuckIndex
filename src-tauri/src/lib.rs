@@ -25,12 +25,10 @@ mod worker;
 fn setup_index_task(window: tauri::WebviewWindow) {
     std::thread::spawn(move || {
         loop {
-            // let msg = rx.recv().unwrap();
             let worker = Worker::new().unwrap();
-            let msg = worker.get_tasks_status().unwrap();
-            // println!("Sending index task update to frontend");
+            let task_status_stat = worker.get_tasks_status().unwrap();
             window
-                .emit("index-task-update", format!("{}", msg))
+                .emit("index-task-update", task_status_stat)
                 .unwrap();
             thread::sleep(Duration::from_secs(1));
         }

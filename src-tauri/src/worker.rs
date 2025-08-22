@@ -41,20 +41,13 @@ enum TaskStatus {
     FAILED,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct TaskStatusStat {
     pending: usize,
     running: usize,
     failed: usize,
     running_tasks: Vec<String>,
     failed_tasks: Vec<String>,
-}
-
-impl std::fmt::Display for TaskStatusStat {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        let json_string = serde_json::to_string_pretty(&self).unwrap();
-        write!(f, "{}", json_string)
-    }
 }
 
 impl Worker {
