@@ -3,43 +3,60 @@ import { ref } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import { Window } from '@tauri-apps/api/window';
 import { open } from '@tauri-apps/plugin-dialog';
-import { ElMessage, TabsPaneContext } from "element-plus";
+import { ElMessage, ScrollbarDirection, TabsPaneContext } from "element-plus";
+import { openPath, revealItemInDir } from '@tauri-apps/plugin-opener';
 
 console.log('Tauri and Vue are ready!');
 
 const mainWindow = new Window('main');
 console.log('Main window:', mainWindow);
 
-interface IndexTaskStatus {
-  pending: number;
-  running: number;
-  failed: number;
-  running_tasks: string[];
-  failed_tasks: string[];
-}
-
+// 统计状态更新
 const pending = ref(0);
 const running = ref(0);
 const failed = ref(0);
 
-// 监听状态更新
-mainWindow.listen("index-task-update", ({ payload }: { event: string; payload: IndexTaskStatus }) => {
+mainWindow.listen("index-task-update", ({ payload }: { event: string; payload: any }) => {
   pending.value = payload.pending;
   running.value = payload.running;
   failed.value = payload.failed;
 });
 
-const greetMsg = ref("");
-const name = ref("");
+// 搜索
+const content = ref("");
 
 async function search() {
-  greetMsg.value = await invoke("search", { query: name.value });
+  directoryResult.value = [];
+  await searchDirectory();
 }
 
+// 搜索结果更新
+const directoryResult = ref<any[]>([]);
+
+async function searchDirectory() {
+  if (!content.value.trim()) {
+    directoryResult.value = [];
+    return;
+  }
+  const offset = directoryResult.value.length;
+  const limit = 10;
+  console.log('Searching directory with query:', content.value, 'Offset:', offset, 'Limit:', limit);
+  const results: any[] = await invoke("search_directory", { query: content.value, offset: offset, limit: limit });
+  for (const item of results) {
+    directoryResult.value.push({ name: item.name , path: item.path });
+  }
+}
+
+async function directoryLoadMore(direction: ScrollbarDirection) {
+  if (direction === 'bottom') {
+    await searchDirectory();
+  }
+}
+
+// 索引目录
 interface TableRow {
   path: string;
 }
-
 const tableData = ref<TableRow[]>([])
 
 async function refreshIndexPathTableData() {
@@ -89,6 +106,20 @@ async function handleAddIndexPathClick() {
   }
 }
 
+// 打开目录
+async function openDirectory(path: string) {
+  try {
+    // await openPath(path);
+    await revealItemInDir(path);
+  } catch (error) {
+    console.error('打开目录失败:', error);
+    ElMessage({
+      message: '打开目录失败',
+      type: 'error',
+    });
+  }
+}
+
 </script>
 
 <template>
@@ -98,9 +129,41 @@ async function handleAddIndexPathClick() {
       <el-main class="flex-grow">
         <el-tabs :tab-position='"top"' class="demo-tabs" @tab-click="handleTabClick">
           <el-tab-pane label="搜索">
-              <el-input v-model="name" @input="search" size="default" placeholder="输入需要搜索的内容" />
-              <p>{{ greetMsg }}</p>
+              <el-input v-model="content" @input="search" size="default" placeholder="输入需要搜索的内容" />
+              <el-row>
+                <el-col :span="8">
+                  <el-scrollbar class="search-scrollbar" @end-reached="directoryLoadMore">
+                    <!-- <el-table :data="directoryResult" style="width: 100%">
+                      <el-table-column type="index" />
+                      <el-table-column prop="name" label="Name" />
+                      <el-table-column prop="path" label="Path" />
+                    </el-table> -->
+
+                    <el-card v-for="(item, index) in directoryResult"  :key="item.path" style="max-width: 480px">
+                      <template #header>
+                        <div class="card-header">
+                          {{ index + 1 }}. {{ item.name }}
+                          <el-button type="primary" @click="openDirectory(item.path)">打开</el-button>
+                        </div>
+                      </template>
+                      <div class="card-main">{{ item.path }}</div>
+                    </el-card>
+<!-- 
+                    <p v-for="item in directoryResult" :key="item.path" class="scrollbar-demo-item">
+
+                      {{ item.name }} {{ item.path }}
+                    </p> -->
+                  </el-scrollbar>
+                </el-col>
+                <el-col :span="8">
+                  <div class="grid-content ep-bg-purple-light" />
+                </el-col>
+                <el-col :span="8">
+                  <div class="grid-content ep-bg-purple" />
+                </el-col>
+              </el-row>
           </el-tab-pane>
+
           <el-tab-pane label="设置">
             <el-text class="mx-1">索引路径</el-text>
             <el-button type="primary" @click="handleAddIndexPathClick">增加</el-button>
@@ -120,13 +183,13 @@ async function handleAddIndexPathClick() {
 
       <el-footer>
         <el-row>
-          <el-col :span="6">
+          <el-col :span="8">
             <el-statistic title="待索引" :value="pending" />
           </el-col>
-          <el-col :span="6">
+          <el-col :span="8">
             <el-statistic title="索引中" :value="running" />
           </el-col>
-          <el-col :span="6">
+          <el-col :span="8">
             <el-statistic title="索引失败" :value="failed" />
           </el-col>
         </el-row>
@@ -147,5 +210,27 @@ async function handleAddIndexPathClick() {
 
 .flex-grow {
   flex: 1;
+}
+
+.scrollbar-demo-item {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 50px;
+  margin: 10px;
+  text-align: center;
+  border-radius: 4px;
+  background: var(--el-color-primary-light-9);
+  color: var(--el-color-primary);
+}
+
+.card-main {
+  font-size: 12px;
+  color: #909399;
+  margin-top: 4px;
+}
+
+.search-scrollbar {
+  height: calc(95vh - 200px); /* 减去header、input、footer等占用的高度 */
 }
 </style>

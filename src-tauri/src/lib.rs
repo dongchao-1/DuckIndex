@@ -8,6 +8,9 @@ use tauri::Manager;
 
 use crate::config::Config;
 use crate::indexer::Indexer;
+use crate::indexer::SearchResultDirectory;
+use crate::indexer::SearchResultFile;
+use crate::indexer::SearchResultItem;
 use crate::log::init_logger;
 use crate::sqlite::init_pool;
 use crate::worker::Worker;
@@ -23,15 +26,11 @@ mod test;
 mod worker;
 
 fn setup_index_task(window: tauri::WebviewWindow) {
-    std::thread::spawn(move || {
-        loop {
-            let worker = Worker::new().unwrap();
-            let task_status_stat = worker.get_tasks_status().unwrap();
-            window
-                .emit("index-task-update", task_status_stat)
-                .unwrap();
-            thread::sleep(Duration::from_secs(1));
-        }
+    std::thread::spawn(move || loop {
+        let worker = Worker::new().unwrap();
+        let task_status_stat = worker.get_tasks_status().unwrap();
+        window.emit("index-task-update", task_status_stat).unwrap();
+        thread::sleep(Duration::from_secs(1));
     });
 }
 
@@ -43,9 +42,7 @@ fn add_index_path(path: &str) {
 
     let worker = Worker::new().unwrap();
     info!("开始索引目录: {}", path);
-    worker
-        .submit_index_all_files(Path::new(&path))
-        .unwrap();
+    worker.submit_index_all_files(Path::new(&path)).unwrap();
 }
 
 #[tauri::command]
@@ -60,10 +57,21 @@ fn del_index_path(path: &str) {
 }
 
 #[tauri::command]
-fn search(query: &str) -> String {
+fn search_directory(query: &str, offset: usize, limit: usize) -> Vec<SearchResultDirectory> {
     let indexer = Indexer::new().unwrap();
-    let results = indexer.search(query, 10).unwrap();
-    format!("Found {} results: {:?}", results.len(), results)
+    indexer.search_directory(query, offset, limit).unwrap()
+}
+
+#[tauri::command]
+fn search_file(query: &str, offset: usize, limit: usize) -> Vec<SearchResultFile> {
+    let indexer = Indexer::new().unwrap();
+    indexer.search_file(query, offset, limit).unwrap()
+}
+
+#[tauri::command]
+fn search_item(query: &str, offset: usize, limit: usize) -> Vec<SearchResultItem> {
+    let indexer = Indexer::new().unwrap();
+    indexer.search_item(query, offset, limit).unwrap()
 }
 
 #[tauri::command]
@@ -90,6 +98,8 @@ pub fn run() {
 
     info!("启动tauri前端服务");
     tauri::Builder::default()
+        .plugin(tauri_plugin_fs::init())
+        .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let window = app.get_webview_window("main").unwrap();
@@ -98,7 +108,9 @@ pub fn run() {
         })
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
-            search,
+            search_directory,
+            search_file,
+            search_item,
             add_index_path,
             del_index_path,
             get_index_dir_paths

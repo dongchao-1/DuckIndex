@@ -1,40 +1,34 @@
 use anyhow::{anyhow, Result};
 use chrono::{DateTime, Local};
 use rusqlite::params;
+use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::Path;
 
 use crate::reader::Item;
 use crate::sqlite::get_pool;
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
 pub struct SearchResultDirectory {
     pub name: String,
     pub path: String,
     pub modified_time: String,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
 pub struct SearchResultFile {
     pub name: String,
     pub path: String,
     pub modified_time: String,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
 pub struct SearchResultItem {
     pub page: u64,
     pub line: u64,
     pub content: String,
     pub file: String,
     pub path: String,
-}
-
-#[derive(Debug, PartialEq, Eq)]
-pub enum SearchResult {
-    Directory(SearchResultDirectory),
-    File(SearchResultFile),
-    Item(SearchResultItem),
 }
 
 pub struct Indexer {}
@@ -261,16 +255,19 @@ impl Indexer {
         Ok((dirs, files))
     }
 
-    pub fn search(&self, content: &str, limit: usize) -> Result<Vec<SearchResult>> {
+    pub fn search_directory(
+        &self,
+        content: &str,
+        offset: usize,
+        limit: usize,
+    ) -> Result<Vec<SearchResultDirectory>> {
         let mut result = Vec::new();
-
         let conn = get_pool()?;
 
         let sql = format!(
-            "SELECT name, path, modified_time FROM directories WHERE name LIKE '%{}%' LIMIT {}",
-            content, limit
+            "SELECT name, path, modified_time FROM directories WHERE name LIKE '%{}%' ORDER BY id LIMIT {} OFFSET {}",
+            content, limit, offset
         );
-        // println!("SQL for directory search: {}", sql);
         let mut stmt = conn.prepare(&sql)?;
         let rows = stmt.query_map([], |row| {
             Ok(SearchResultDirectory {
@@ -281,19 +278,28 @@ impl Indexer {
         })?;
 
         for row in rows {
-            result.push(SearchResult::Directory(row.unwrap()));
+            result.push(row.unwrap());
         }
-        // println!("directories result: {:?}", result);
+        Ok(result)
+    }
+
+    pub fn search_file(
+        &self,
+        content: &str,
+        offset: usize,
+        limit: usize,
+    ) -> Result<Vec<SearchResultFile>> {
+        let mut result = Vec::new();
+        let conn = get_pool()?;
 
         let sql = format!(
             r"SELECT files.name, directories.path, files.modified_time
             FROM files
             left outer join directories
             on files.directory_id = directories.id
-            WHERE files.name LIKE '%{}%' LIMIT {}",
-            content, limit
+            WHERE files.name LIKE '%{}%' ORDER BY files.id LIMIT {} OFFSET {}",
+            content, limit, offset
         );
-        // println!("SQL for file search: {}", sql);
         let mut stmt = conn.prepare(&sql)?;
         let rows = stmt.query_map([], |row| {
             Ok(SearchResultFile {
@@ -304,19 +310,28 @@ impl Indexer {
         })?;
 
         for row in rows {
-            result.push(SearchResult::File(row.unwrap()));
+            result.push(row.unwrap());
         }
-        // println!("files result: {:?}", result);
+        Ok(result)
+    }
+
+    pub fn search_item(
+        &self,
+        content: &str,
+        offset: usize,
+        limit: usize,
+    ) -> Result<Vec<SearchResultItem>> {
+        let mut result = Vec::new();
+        let conn = get_pool()?;
 
         let sql = format!(
             r"SELECT items.page, items.line, items.content, files.name, directories.path
             FROM items
             LEFT OUTER JOIN files ON items.file_id = files.id
             LEFT OUTER JOIN directories ON files.directory_id = directories.id
-            WHERE items.content LIKE '%{}%' LIMIT {}",
-            content, limit
+            WHERE items.content LIKE '%{}%' ORDER BY items.id LIMIT {} OFFSET {}",
+            content, limit, offset
         );
-        // println!("SQL for item search: {}", sql);
         let mut stmt = conn.prepare(&sql)?;
         let rows = stmt.query_map([], |row| {
             Ok(SearchResultItem {
@@ -329,10 +344,8 @@ impl Indexer {
         })?;
 
         for row in rows {
-            result.push(SearchResult::Item(row.unwrap()));
+            result.push(row.unwrap());
         }
-        // println!("items result: {:?}", result);
-
         Ok(result)
     }
 
@@ -475,21 +488,18 @@ mod tests {
     }
 
     #[test]
-    fn test_search_path() {
+    fn test_search_directory() {
         let _env = TestEnv::new();
         let indexer = Indexer::new().unwrap();
-        let file = Path::new("../test_data/").canonicalize().unwrap();
-        indexer.write_directory(&file).unwrap();
+        let dir = Path::new("../test_data/").canonicalize().unwrap();
+        indexer.write_directory(&dir).unwrap();
 
-        let result = indexer.search("test_data", 10).unwrap();
+        let result = indexer.search_directory("test_data", 0, 10).unwrap();
         assert_eq!(result.len(), 1);
-        match &result[0] {
-            SearchResult::Directory(dir) => {
-                assert_eq!(dir.name, "test_data");
-                assert_eq!(dir.path, file.canonicalize().unwrap().to_str().unwrap());
-            }
-            _ => panic!("Expected directory result"),
-        }
+        assert_eq!(result[0].name, "test_data");
+
+        let result = indexer.search_directory("test_data", 1, 10).unwrap();
+        assert_eq!(result.len(), 0);
     }
 
     #[test]
@@ -512,23 +522,13 @@ mod tests {
         indexer.write_directory(file.parent().unwrap()).unwrap();
         indexer.write_file_items(&file, items).unwrap();
 
-        let result = indexer.search("1.t", 10).unwrap();
+        let result = indexer.search_file("1.t", 0, 10).unwrap();
         assert_eq!(result.len(), 1);
-        match &result[0] {
-            SearchResult::File(f) => {
-                assert_eq!(f.name, "1.txt");
-                assert_eq!(
-                    f.path,
-                    file.parent()
-                        .unwrap()
-                        .canonicalize()
-                        .unwrap()
-                        .to_str()
-                        .unwrap()
-                );
-            }
-            _ => panic!("Expected file result"),
-        }
+        assert_eq!(result[0].name, "1.txt");
+        assert_eq!(result[0].path, file.parent().unwrap().to_str().unwrap());
+
+        let result = indexer.search_file("1.t", 1, 10).unwrap();
+        assert_eq!(result.len(), 0);
     }
 
     #[test]
@@ -551,25 +551,13 @@ mod tests {
         indexer.write_directory(file.parent().unwrap()).unwrap();
         indexer.write_file_items(&file, items).unwrap();
 
-        let result = indexer.search("world", 10).unwrap();
+        let result = indexer.search_item("world", 0, 10).unwrap();
         assert_eq!(result.len(), 1);
-        assert_eq!(
-            result[0],
-            SearchResult::Item(SearchResultItem {
-                page: 0,
-                line: 1,
-                content: "Hello, world!".into(),
-                file: "1.txt".into(),
-                path: file
-                    .parent()
-                    .unwrap()
-                    .canonicalize()
-                    .unwrap()
-                    .to_str()
-                    .unwrap()
-                    .into(),
-            })
-        );
+        assert_eq!(result[0].page, 0);
+        assert_eq!(result[0].line, 1);
+        assert_eq!(result[0].content, "Hello, world!");
+        assert_eq!(result[0].file, "1.txt");
+        assert_eq!(result[0].path, file.parent().unwrap().to_str().unwrap());
     }
 
     #[test]
