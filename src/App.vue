@@ -197,51 +197,51 @@ async function handleAddIndexPathClick() {
       <el-main class="flex-grow">
         <el-tabs :tab-position='"top"' class="demo-tabs" @tab-click="handleTabClick">
           <el-tab-pane label="搜索">
-              <el-input v-model="content" @input="search" size="default" placeholder="输入需要搜索的内容" />
-              <el-row>
-                <el-col :span="8">
-                  <p>目录:</p>
-                  <el-scrollbar class="search-scrollbar" @end-reached="directoryLoadMore" style="width: 90%">
-                    <el-card v-for="(item, index) in directoryResult"  :key="item.path">
-                      <template #header>
-                        <div class="card-header">
-                          {{ index + 1 }}. {{ item.name }}
-                          <el-button type="primary" @click="openInExplorer(item.path)">打开</el-button>
-                        </div>
-                      </template>
-                      <div class="card-main">{{ item.path }}</div>
-                    </el-card>
-                  </el-scrollbar>
-                </el-col>
-                <el-col :span="8">
-                  <p>文件:</p>
-                  <el-scrollbar class="search-scrollbar" @end-reached="fileLoadMore" style="width: 90%">
-                    <el-card v-for="(item, index) in fileResult"  :key="item.path">
-                      <template #header>
-                        <div class="card-header">
-                          {{ index + 1 }}. {{ item.name }}
-                          <el-button type="primary" @click="openInExplorer( item.path, item.name)">打开</el-button>
-                        </div>
-                      </template>
-                      <div class="card-main">{{ item.path }}</div>
-                    </el-card>
-                  </el-scrollbar>
-                </el-col>
-                <el-col :span="8">
-                  <p>内容:</p>
-                  <el-scrollbar class="search-scrollbar" @end-reached="itemLoadMore" style="width: 90%">
-                    <el-card v-for="(item, index) in itemResult"  :key="item.path">
-                      <template #header>
-                        <div class="card-header">
-                          {{ index + 1 }}. {{ item.content }}
-                          <el-button type="primary" @click="openInExplorer( item.path, item.file)">打开</el-button>
-                        </div>
-                      </template>
-                      <div class="card-main">{{ item.fullPath }}</div>
-                    </el-card>
-                  </el-scrollbar>
-                </el-col>
-              </el-row>
+            <el-input v-model="content" @input="search" size="default" placeholder="输入需要搜索的内容" />
+            <el-row>
+              <el-col :span="8">
+                <p>目录:</p>
+                <el-scrollbar class="search-scrollbar" @end-reached="directoryLoadMore" style="width: 90%">
+                  <el-card v-for="(item, index) in directoryResult"  :key="item.path">
+                    <template #header>
+                      <div class="card-header">
+                        {{ index + 1 }}. {{ item.name }}
+                        <el-button type="primary" @click="openInExplorer(item.path)">打开</el-button>
+                      </div>
+                    </template>
+                    <div class="card-main">{{ item.path }}</div>
+                  </el-card>
+                </el-scrollbar>
+              </el-col>
+              <el-col :span="8">
+                <p>文件:</p>
+                <el-scrollbar class="search-scrollbar" @end-reached="fileLoadMore" style="width: 90%">
+                  <el-card v-for="(item, index) in fileResult"  :key="item.path">
+                    <template #header>
+                      <div class="card-header">
+                        {{ index + 1 }}. {{ item.name }}
+                        <el-button type="primary" @click="openInExplorer( item.path, item.name)">打开</el-button>
+                      </div>
+                    </template>
+                    <div class="card-main">{{ item.path }}</div>
+                  </el-card>
+                </el-scrollbar>
+              </el-col>
+              <el-col :span="8">
+                <p>内容:</p>
+                <el-scrollbar class="search-scrollbar" @end-reached="itemLoadMore" style="width: 90%">
+                  <el-card v-for="(item, index) in itemResult"  :key="item.path">
+                    <template #header>
+                      <div class="card-header">
+                        {{ index + 1 }}. {{ item.content }}
+                        <el-button type="primary" @click="openInExplorer( item.path, item.file)">打开</el-button>
+                      </div>
+                    </template>
+                    <div class="card-main">{{ item.fullPath }}</div>
+                  </el-card>
+                </el-scrollbar>
+              </el-col>
+            </el-row>
           </el-tab-pane>
 
           <el-tab-pane label="设置">
