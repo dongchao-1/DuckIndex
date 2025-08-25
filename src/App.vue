@@ -4,7 +4,8 @@ import { invoke } from "@tauri-apps/api/core";
 import { Window } from '@tauri-apps/api/window';
 import { open } from '@tauri-apps/plugin-dialog';
 import { ElMessage, ScrollbarDirection, TabsPaneContext } from "element-plus";
-import { openPath, revealItemInDir } from '@tauri-apps/plugin-opener';
+import { revealItemInDir } from '@tauri-apps/plugin-opener';
+import { join } from '@tauri-apps/api/path';
 
 console.log('Tauri and Vue are ready!');
 
@@ -27,7 +28,11 @@ const content = ref("");
 
 async function search() {
   directoryResult.value = [];
+  fileResult.value = [];
+  itemResult.value = [];
   await searchDirectory();
+  await searchFile();
+  await searchItem();
 }
 
 // 搜索结果更新
@@ -50,6 +55,72 @@ async function searchDirectory() {
 async function directoryLoadMore(direction: ScrollbarDirection) {
   if (direction === 'bottom') {
     await searchDirectory();
+  }
+}
+
+const fileResult = ref<any[]>([]);
+
+async function searchFile() {
+  if (!content.value.trim()) {
+    fileResult.value = [];
+    return;
+  }
+  const offset = fileResult.value.length;
+  const limit = 10;
+  console.log('Searching file with query:', content.value, 'Offset:', offset, 'Limit:', limit);
+  const results: any[] = await invoke("search_file", { query: content.value, offset: offset, limit: limit });
+  for (const item of results) {
+    fileResult.value.push({ name: item.name , path: item.path });
+  }
+}
+
+async function fileLoadMore(direction: ScrollbarDirection) {
+  if (direction === 'bottom') {
+    await searchFile();
+  }
+}
+
+
+const itemResult = ref<any[]>([]);
+
+async function searchItem() {
+  if (!content.value.trim()) {
+    itemResult.value = [];
+    return;
+  }
+  const offset = itemResult.value.length;
+  const limit = 10;
+  console.log('Searching item with query:', content.value, 'Offset:', offset, 'Limit:', limit);
+  const results: any[] = await invoke("search_item", { query: content.value, offset: offset, limit: limit });
+  for (const item of results) {
+    const fullPath = await join(item.path, item.file);
+    itemResult.value.push({ content: item.content, file: item.file , path: item.path, fullPath });
+  }
+  // console.log('Item search results:', itemResult.value);
+}
+
+async function itemLoadMore(direction: ScrollbarDirection) {
+  if (direction === 'bottom') {
+    await searchItem();
+  }
+}
+
+
+// 打开目录
+async function openInExplorer(path: string, file?: string) {
+  try {
+    // await openPath(path);
+    if (file) {
+      await revealItemInDir( await join(path, file));
+    } else {
+      await revealItemInDir(path);
+    }
+  } catch (error) {
+    console.error('打开目录失败:', error);
+    ElMessage({
+      message: '打开目录失败',
+      type: 'error',
+    });
   }
 }
 
@@ -106,20 +177,6 @@ async function handleAddIndexPathClick() {
   }
 }
 
-// 打开目录
-async function openDirectory(path: string) {
-  try {
-    // await openPath(path);
-    await revealItemInDir(path);
-  } catch (error) {
-    console.error('打开目录失败:', error);
-    ElMessage({
-      message: '打开目录失败',
-      type: 'error',
-    });
-  }
-}
-
 </script>
 
 <template>
@@ -132,34 +189,46 @@ async function openDirectory(path: string) {
               <el-input v-model="content" @input="search" size="default" placeholder="输入需要搜索的内容" />
               <el-row>
                 <el-col :span="8">
-                  <el-scrollbar class="search-scrollbar" @end-reached="directoryLoadMore">
-                    <!-- <el-table :data="directoryResult" style="width: 100%">
-                      <el-table-column type="index" />
-                      <el-table-column prop="name" label="Name" />
-                      <el-table-column prop="path" label="Path" />
-                    </el-table> -->
-
-                    <el-card v-for="(item, index) in directoryResult"  :key="item.path" style="max-width: 480px">
+                  <p>目录:</p>
+                  <el-scrollbar class="search-scrollbar" @end-reached="directoryLoadMore" style="width: 90%">
+                    <el-card v-for="(item, index) in directoryResult"  :key="item.path">
                       <template #header>
                         <div class="card-header">
                           {{ index + 1 }}. {{ item.name }}
-                          <el-button type="primary" @click="openDirectory(item.path)">打开</el-button>
+                          <el-button type="primary" @click="openInExplorer(item.path)">打开</el-button>
                         </div>
                       </template>
                       <div class="card-main">{{ item.path }}</div>
                     </el-card>
-<!-- 
-                    <p v-for="item in directoryResult" :key="item.path" class="scrollbar-demo-item">
-
-                      {{ item.name }} {{ item.path }}
-                    </p> -->
                   </el-scrollbar>
                 </el-col>
                 <el-col :span="8">
-                  <div class="grid-content ep-bg-purple-light" />
+                  <p>文件:</p>
+                  <el-scrollbar class="search-scrollbar" @end-reached="fileLoadMore" style="width: 90%">
+                    <el-card v-for="(item, index) in fileResult"  :key="item.path">
+                      <template #header>
+                        <div class="card-header">
+                          {{ index + 1 }}. {{ item.name }}
+                          <el-button type="primary" @click="openInExplorer( item.path, item.name)">打开</el-button>
+                        </div>
+                      </template>
+                      <div class="card-main">{{ item.path }}</div>
+                    </el-card>
+                  </el-scrollbar>
                 </el-col>
                 <el-col :span="8">
-                  <div class="grid-content ep-bg-purple" />
+                  <p>内容:</p>
+                  <el-scrollbar class="search-scrollbar" @end-reached="itemLoadMore" style="width: 90%">
+                    <el-card v-for="(item, index) in itemResult"  :key="item.path">
+                      <template #header>
+                        <div class="card-header">
+                          {{ index + 1 }}. {{ item.content }}
+                          <el-button type="primary" @click="openInExplorer( item.path, item.file)">打开</el-button>
+                        </div>
+                      </template>
+                      <div class="card-main">{{ item.fullPath }}</div>
+                    </el-card>
+                  </el-scrollbar>
                 </el-col>
               </el-row>
           </el-tab-pane>
@@ -231,6 +300,6 @@ async function openDirectory(path: string) {
 }
 
 .search-scrollbar {
-  height: calc(95vh - 200px); /* 减去header、input、footer等占用的高度 */
+  height: calc(95vh - 250px); /* 减去header、input、footer等占用的高度 */
 }
 </style>
