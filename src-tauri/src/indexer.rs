@@ -24,11 +24,16 @@ pub struct SearchResultFile {
 
 #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
 pub struct SearchResultItem {
-    pub page: u64,
-    pub line: u64,
     pub content: String,
     pub file: String,
     pub path: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct IndexStatusStat {
+    directories: usize,
+    files: usize,
+    items: usize,
 }
 
 pub struct Indexer {}
@@ -82,8 +87,6 @@ impl Indexer {
             CREATE TABLE items (
                 id INTEGER PRIMARY KEY,
                 file_id INTEGER NOT NULL,
-                page INTEGER NOT NULL,
-                line INTEGER NOT NULL,
                 content TEXT NOT NULL
             );
             DROP TABLE IF EXISTS indexer_version;
@@ -181,13 +184,13 @@ impl Indexer {
 
         for chunk in items.chunks(1000) {
             let mut query =
-                String::from("INSERT INTO items (file_id, page, line, content) VALUES ");
+                String::from("INSERT INTO items (file_id, content) VALUES ");
 
             // 构建 VALUES 部分 (?, ?, ?, ?), (?, ?, ?, ?), ...
             let values: Vec<String> = (0..chunk.len())
                 .map(|i| {
-                    let base = i * 4 + 1; // 每个 item 有 4 个参数
-                    format!("(?{}, ?{}, ?{}, ?{})", base, base + 1, base + 2, base + 3)
+                    let base = i * 2 + 1; // 每个 item 有 2 个参数
+                    format!("(?{}, ?{})", base, base + 1)
                 })
                 .collect();
             query.push_str(&values.join(", "));
@@ -196,8 +199,6 @@ impl Indexer {
             let mut params = Vec::new();
             for item in chunk.iter() {
                 params.push(&file_id as &dyn rusqlite::ToSql);
-                params.push(&item.page as &dyn rusqlite::ToSql);
-                params.push(&item.line as &dyn rusqlite::ToSql);
                 params.push(&item.content as &dyn rusqlite::ToSql);
             }
 
@@ -325,7 +326,7 @@ impl Indexer {
         let conn = get_pool()?;
 
         let sql = format!(
-            r"SELECT items.page, items.line, items.content, files.name, directories.path
+            r"SELECT items.content, files.name, directories.path
             FROM items
             LEFT OUTER JOIN files ON items.file_id = files.id
             LEFT OUTER JOIN directories ON files.directory_id = directories.id
@@ -335,11 +336,9 @@ impl Indexer {
         let mut stmt = conn.prepare(&sql)?;
         let rows = stmt.query_map([], |row| {
             Ok(SearchResultItem {
-                page: row.get(0)?,
-                line: row.get(1)?,
-                content: row.get(2)?,
-                file: row.get(3)?,
-                path: row.get(4)?,
+                content: row.get(0)?,
+                file: row.get(1)?,
+                path: row.get(2)?,
             })
         })?;
 
@@ -391,6 +390,18 @@ impl Indexer {
 
         Ok(())
     }
+
+    pub fn get_index_status(&self) -> Result<IndexStatusStat> {
+        let conn = get_pool()?;
+        let total_directories: i64 = conn.query_one("SELECT COUNT(*) FROM directories", [], |row| row.get(0))?;
+        let total_files: i64 = conn.query_one("SELECT COUNT(*) FROM files", [], |row| row.get(0))?;
+        let indexed_files: i64 = conn.query_one("SELECT COUNT(*) FROM items", [], |row| row.get(0))?;
+        Ok(IndexStatusStat {
+            directories: total_directories as usize,
+            files: total_files as usize,
+            items: indexed_files as usize,
+        })
+    }
 }
 
 #[cfg(test)]
@@ -440,13 +451,9 @@ mod tests {
 
         let items = vec![
             Item {
-                page: 0,
-                line: 1,
                 content: "Hello, world!".into(),
             },
             Item {
-                page: 0,
-                line: 2,
                 content: "This is a test.".into(),
             },
         ];
@@ -463,13 +470,9 @@ mod tests {
 
         let items = vec![
             Item {
-                page: 0,
-                line: 1,
                 content: "Hello, world!".into(),
             },
             Item {
-                page: 0,
-                line: 2,
                 content: "This is a test.".into(),
             },
         ];
@@ -508,13 +511,9 @@ mod tests {
         let indexer = Indexer::new().unwrap();
         let items = vec![
             Item {
-                page: 0,
-                line: 1,
                 content: "Hello, world!".into(),
             },
             Item {
-                page: 0,
-                line: 2,
                 content: "This is a test.".into(),
             },
         ];
@@ -537,13 +536,9 @@ mod tests {
         let indexer = Indexer::new().unwrap();
         let items = vec![
             Item {
-                page: 0,
-                line: 1,
                 content: "Hello, world!".into(),
             },
             Item {
-                page: 0,
-                line: 2,
                 content: "This is a test.".into(),
             },
         ];
@@ -553,8 +548,6 @@ mod tests {
 
         let result = indexer.search_item("world", 0, 10).unwrap();
         assert_eq!(result.len(), 1);
-        assert_eq!(result[0].page, 0);
-        assert_eq!(result[0].line, 1);
         assert_eq!(result[0].content, "Hello, world!");
         assert_eq!(result[0].file, "1.txt");
         assert_eq!(result[0].path, file.parent().unwrap().to_str().unwrap());
@@ -566,13 +559,9 @@ mod tests {
         let indexer = Indexer::new().unwrap();
         let items = vec![
             Item {
-                page: 0,
-                line: 1,
                 content: "Hello, world!".into(),
             },
             Item {
-                page: 0,
-                line: 2,
                 content: "This is a test.".into(),
             },
         ];
@@ -595,13 +584,9 @@ mod tests {
         let indexer = Indexer::new().unwrap();
         let items = vec![
             Item {
-                page: 0,
-                line: 1,
                 content: "Hello, world!".into(),
             },
             Item {
-                page: 0,
-                line: 2,
                 content: "This is a test.".into(),
             },
         ];
@@ -620,4 +605,27 @@ mod tests {
         assert_eq!(dir_result.len(), 0);
         assert_eq!(file_result.len(), 0);
     }
+
+    #[test]
+    fn test_get_index_status() {
+        let _env = TestEnv::new();
+        let indexer = Indexer::new().unwrap();
+        let items = vec![
+            Item {
+                content: "Hello, world!".into(),
+            },
+            Item {
+                content: "This is a test.".into(),
+            },
+        ];
+        let file = Path::new("../test_data/1.txt").canonicalize().unwrap();
+        indexer.write_directory(file.parent().unwrap()).unwrap();
+        indexer.write_file_items(&file, items).unwrap();
+
+        let result = indexer.get_index_status().unwrap();
+        assert_eq!(result.directories, 1);
+        assert_eq!(result.files, 1);
+        assert_eq!(result.items, 2);
+    }
+
 }

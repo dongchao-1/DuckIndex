@@ -1,4 +1,5 @@
 use ::log::info;
+use serde::Serialize;
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 use std::path::Path;
 use std::thread;
@@ -7,12 +8,14 @@ use tauri::Emitter;
 use tauri::Manager;
 
 use crate::config::Config;
+use crate::indexer::IndexStatusStat;
 use crate::indexer::Indexer;
 use crate::indexer::SearchResultDirectory;
 use crate::indexer::SearchResultFile;
 use crate::indexer::SearchResultItem;
 use crate::log::init_logger;
 use crate::sqlite::init_pool;
+use crate::worker::TaskStatusStat;
 use crate::worker::Worker;
 
 mod config;
@@ -25,11 +28,23 @@ mod sqlite;
 mod test;
 mod worker;
 
+#[derive(Debug, Clone, Serialize)]
+struct TotalStatus {
+    task_status_stat: TaskStatusStat,
+    index_status_stat: IndexStatusStat,
+}
+
 fn setup_index_task(window: tauri::WebviewWindow) {
     std::thread::spawn(move || loop {
         let worker = Worker::new().unwrap();
+        let indexer = Indexer::new().unwrap();
         let task_status_stat = worker.get_tasks_status().unwrap();
-        window.emit("index-task-update", task_status_stat).unwrap();
+        let index_status_stat = indexer.get_index_status().unwrap();
+
+        window.emit("index-task-update", TotalStatus {
+            task_status_stat,
+            index_status_stat,
+        }).unwrap();
         thread::sleep(Duration::from_secs(1));
     });
 }

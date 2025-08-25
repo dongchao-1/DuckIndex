@@ -13,8 +13,6 @@ use zip::ZipArchive;
 
 #[derive(Debug)]
 pub struct Item {
-    pub page: u64,
-    pub line: u64,
     pub content: String,
 }
 
@@ -75,11 +73,9 @@ impl Reader for TxtReader {
         let reader = BufReader::new(file);
         let mut items = vec![];
 
-        for (line_number, line) in reader.lines().enumerate() {
+        for line in reader.lines() {
             let line = line?;
             items.push(Item {
-                page: 0,
-                line: line_number as u64 + 1,
                 content: line,
             });
         }
@@ -107,12 +103,11 @@ impl Reader for DocxReader {
         let mut txt = String::new();
         let mut buf = Vec::new();
         let mut items = vec![];
-        let mut line = 1;
 
         loop {
             match xml_reader.read_event_into(&mut buf)? {
                 quickXmlEvent::Start(e) if e.name().as_ref() == b"w:p" => {
-                    if let Some(item) = self.create_item(&mut txt, &mut line) {
+                    if let Some(item) = self.create_item(&mut txt) {
                         items.push(item);
                     }
                 }
@@ -120,7 +115,7 @@ impl Reader for DocxReader {
                     txt.push_str(&e.decode()?);
                 }
                 quickXmlEvent::Eof => {
-                    if let Some(item) = self.create_item(&mut txt, &mut line) {
+                    if let Some(item) = self.create_item(&mut txt) {
                         items.push(item);
                     }
                     break;
@@ -139,15 +134,11 @@ impl Reader for DocxReader {
 }
 
 impl DocxReader {
-    fn create_item(&self, txt: &mut String, line: &mut u32) -> Option<Item> {
+    fn create_item(&self, txt: &mut String) -> Option<Item> {
         let item = if !txt.trim().is_empty() {
             let txt_ret = txt.trim().to_string();
             txt.clear();
-            let line_ret = *line;
-            *line += 1;
             Some(Item {
-                page: 0,
-                line: line_ret as u64,
                 content: txt_ret,
             })
         } else {
@@ -178,39 +169,31 @@ impl Reader for PptxReader {
                     let file_name = file_name.to_string_lossy();
 
                     if file_name.starts_with("slide") && file_name.ends_with(".xml") {
-                        if let Some(number_str) = file_name
-                            .strip_prefix("slide")
-                            .and_then(|s| s.strip_suffix(".xml"))
-                        {
-                            if let Ok(page_number) = number_str.parse::<u64>() {
-                                let reader = BufReader::new(File::open(entry.path())?);
-                                let mut xml_reader = quickXmlReader::from_reader(reader);
-
-                                loop {
-                                    match xml_reader.read_event_into(&mut buf)? {
-                                        quickXmlEvent::Start(e) if e.name().as_ref() == b"a:p" => {
-                                            if let Some(item) =
-                                                self.create_item(&mut txt, page_number)
-                                            {
-                                                items.push(item);
-                                            }
-                                        }
-                                        quickXmlEvent::Text(e) => {
-                                            txt.push_str(&e.decode()?);
-                                        }
-                                        quickXmlEvent::Eof => {
-                                            if let Some(item) =
-                                                self.create_item(&mut txt, page_number)
-                                            {
-                                                items.push(item);
-                                            }
-                                            break;
-                                        } // 文件结束
-                                        _ => (),
+                        let reader = BufReader::new(File::open(entry.path())?);
+                        let mut xml_reader = quickXmlReader::from_reader(reader);
+                        loop {
+                            match xml_reader.read_event_into(&mut buf)? {
+                                quickXmlEvent::Start(e) if e.name().as_ref() == b"a:p" => {
+                                    if let Some(item) =
+                                        self.create_item(&mut txt)
+                                    {
+                                        items.push(item);
                                     }
-                                    buf.clear();
                                 }
+                                quickXmlEvent::Text(e) => {
+                                    txt.push_str(&e.decode()?);
+                                }
+                                quickXmlEvent::Eof => {
+                                    if let Some(item) =
+                                        self.create_item(&mut txt)
+                                    {
+                                        items.push(item);
+                                    }
+                                    break;
+                                } // 文件结束
+                                _ => (),
                             }
+                            buf.clear();
                         }
                     }
                 }
@@ -225,13 +208,11 @@ impl Reader for PptxReader {
 }
 
 impl PptxReader {
-    fn create_item(&self, txt: &mut String, page: u64) -> Option<Item> {
+    fn create_item(&self, txt: &mut String) -> Option<Item> {
         let item = if !txt.trim().is_empty() {
             let txt_ret = txt.trim().to_string();
             txt.clear();
             Some(Item {
-                page: page,
-                line: 0,
                 content: txt_ret,
             })
         } else {
@@ -281,8 +262,6 @@ impl Reader for PdfReader {
         // println!("Extracted text: {}", text);
         // println!("result: {}", result);
         items.push(Item {
-            page: 0,
-            line: 0,
             content: result,
         });
         Ok(items)
