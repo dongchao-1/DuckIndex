@@ -174,9 +174,9 @@ impl Indexer {
         let file_name = file.file_name().unwrap().to_str().unwrap();
         let modified_time = self.get_modified_time(&file)?;
 
-        let conn = get_pool()?;
-        // TODO 需要加事务，以及其他的方法
-        let file_id: i64 = conn.query_row(
+        let mut conn = get_pool()?;
+        let tx = conn.transaction()?;
+        let file_id: i64 = tx.query_row(
             "INSERT INTO files (directory_id, name, modified_time) VALUES (?1, ?2, ?3) ON CONFLICT(directory_id, name) DO UPDATE SET directory_id = directory_id RETURNING id",
             params![&directory_id, file_name, &modified_time],
             |row| row.get(0),
@@ -204,8 +204,9 @@ impl Indexer {
             }
 
             // 执行批量插入
-            conn.execute(&query, params.as_slice())?;
+            tx.execute(&query, params.as_slice())?;
         }
+        tx.commit()?;
         Ok(())
     }
 
@@ -353,21 +354,21 @@ impl Indexer {
         self.check_is_absolute(file)?;
         let file_name = file.file_name().unwrap().to_str().unwrap();
         let directory_path = file.parent().unwrap().to_str().unwrap();
-        let conn = get_pool()?;
-        let file_id: i64 = conn.query_row(
+        let mut conn = get_pool()?;
+        let tx = conn.transaction()?;
+        let file_id: i64 = tx.query_row(
             "SELECT id FROM files WHERE name = ?1 and directory_id in (SELECT id FROM directories WHERE path = ?2)",
             params![file_name, &directory_path],
             |row| row.get(0),
-        ).unwrap();
+        )?;
 
-        conn.execute(
+        tx.execute(
             "DELETE FROM items WHERE file_id = ?1",
             &[&file_id.to_string()],
-        )
-        .unwrap();
+        )?;
 
-        conn.execute("DELETE FROM files WHERE id = ?1", &[&file_id.to_string()])
-            .unwrap();
+        tx.execute("DELETE FROM files WHERE id = ?1", &[&file_id.to_string()])?;
+        tx.commit()?;
 
         Ok(())
     }

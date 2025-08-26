@@ -1,6 +1,5 @@
 use ::log::info;
 use serde::Serialize;
-// Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 use std::path::Path;
 use std::thread;
 use std::time::Duration;
