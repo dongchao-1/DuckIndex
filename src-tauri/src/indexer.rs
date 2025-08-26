@@ -3,7 +3,7 @@ use chrono::{DateTime, Local};
 use rusqlite::params;
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::path::Path;
+use std::path::{Path, MAIN_SEPARATOR};
 
 use crate::reader::Item;
 use crate::sqlite::get_pool;
@@ -122,7 +122,7 @@ impl Indexer {
         let modified_time = self.get_modified_time(directory)?;
 
         let directory_id = get_pool()?.query_row(
-            "INSERT INTO directories (name, path, modified_time) VALUES (?1, ?2, ?3) ON CONFLICT(path) DO UPDATE SET path = path RETURNING id",
+            "INSERT INTO directories (name, path, modified_time) VALUES (?1, ?2, ?3) ON CONFLICT(path) DO UPDATE SET modified_time = ?3 RETURNING id",
             params![&dir_name, &dir_path, &modified_time],
             |row| row.get(0)
         )?;
@@ -222,9 +222,11 @@ impl Indexer {
         let dir_path = directory.to_str().unwrap();
         let conn = get_pool()?;
         let mut stmt = conn.prepare(
-            "SELECT name, path, modified_time FROM directories WHERE path != ?1 AND path LIKE ?2",
+            "SELECT name, path, modified_time FROM directories WHERE path != ?1 AND path LIKE ?2 AND path NOT LIKE ?3",
         )?;
-        let rows = stmt.query_map(params![dir_path, format!("{}%", dir_path)], |row| {
+        let rows = stmt.query_map(
+            params![dir_path, format!("{}%", dir_path), format!("{}%{}%", dir_path, MAIN_SEPARATOR)],
+            |row| {
             Ok(SearchResultDirectory {
                 name: row.get(0)?,
                 path: row.get(1)?,
@@ -243,13 +245,16 @@ impl Indexer {
             ON files.directory_id = directories.id
             WHERE directories.path = ?1",
         )?;
-        let rows = stmt.query_map(params![dir_path], |row| {
-            Ok(SearchResultFile {
-                name: row.get(0)?,
-                path: row.get(1)?,
-                modified_time: row.get(2)?,
-            })
-        })?;
+        let rows = stmt.query_map(
+            params![dir_path],
+            |row| {
+                Ok(SearchResultFile {
+                    name: row.get(0)?,
+                    path: row.get(1)?,
+                    modified_time: row.get(2)?,
+                })
+            },
+        )?;
 
         for row in rows {
             files.push(row?);

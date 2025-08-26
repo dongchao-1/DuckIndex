@@ -1,5 +1,6 @@
 use anyhow::{anyhow, Result};
 use chrono::Local;
+use log::debug;
 use log::error;
 use log::info;
 use rusqlite::params;
@@ -171,6 +172,8 @@ impl Worker {
                         index_dir.modified_time,
                         modified_time
                     );
+                    self.indexer.write_directory(path)?;
+                    info!("目录时间已更新。目录: {}", path.display());
                     // 目录修改了
                     let (index_sub_dirs, index_sub_files) =
                         self.indexer.get_sub_directories_and_files(path)?;
@@ -190,11 +193,15 @@ impl Worker {
                     for dir in index_sub_dirs.difference(&current_sub_dirs) {
                         // 删除的目录
                         info!("删除目录索引: {}", dir.display());
+                        debug!("index_sub_dirs: {:?}", index_sub_dirs);
+                        debug!("current_sub_dirs: {:?}", current_sub_dirs);
                         self.indexer.delete_directory(dir)?;
                     }
                     for file in index_sub_files.difference(&current_sub_files) {
                         // 删除的文件
                         info!("删除文件索引: {}", file.display());
+                        debug!("index_sub_files: {:?}", index_sub_files);
+                        debug!("current_sub_files: {:?}", current_sub_files);
                         self.indexer.delete_file(file)?;
                     }
                 }

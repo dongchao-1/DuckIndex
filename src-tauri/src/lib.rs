@@ -105,9 +105,20 @@ pub fn setup_backend() {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    info!("DeepIndex启动");
     setup_backend();
 
-    info!("启动后台服务");
+    info!("开始检查已有目录");
+    thread::spawn(|| {
+        let worker = Worker::new().unwrap();
+        Config::get_index_dir_paths().unwrap().iter().for_each(|path| {
+            info!("开始检查目录: {}", path);
+            worker.submit_index_all_files(Path::new(path)).unwrap();
+            info!("目录检查完成: {}", path);
+        });
+    });
+
+    info!("启动后台索引服务");
     Worker::start_process().unwrap();
 
     info!("启动tauri前端服务");
