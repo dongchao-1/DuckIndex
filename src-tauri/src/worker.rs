@@ -86,7 +86,8 @@ impl Worker {
                 path TEXT NOT NULL,
                 status TEXT NOT NULL,
                 created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL
+                updated_at TEXT NOT NULL,
+                UNIQUE (type, path)
             );
             DROP TABLE IF EXISTS worker_version;
             CREATE TABLE worker_version (
@@ -117,13 +118,14 @@ impl Worker {
         Ok(Worker { indexer, reader })
     }
 
-    fn add_task(&self, task_type: &TaskType, path: &Path) -> Result<()> {
+    fn add_task(&self, task_type: &TaskType, path: &Path) -> Result<i64> {
         let conn = get_pool()?;
 
         let path = path.to_str().unwrap().to_string();
         let now = Local::now().to_rfc3339();
-        conn.execute(
-            "INSERT INTO tasks (type, path, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+        let id = conn.query_one(
+            r"INSERT INTO tasks (type, path, status, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5) ON CONFLICT(type, path) 
+                DO UPDATE SET status=?3 and updated_at=?5 RETURNING id",
             params![
                 task_type.to_string(),
                 path,
@@ -131,8 +133,12 @@ impl Worker {
                 now,
                 now
             ],
+            |row| {
+                let id = row.get::<_, i64>(0)?;
+                Ok(id)
+            }
         )?;
-        Ok(())
+        Ok(id)
     }
 
     fn split_dir_contents(&self, path: &Path) -> Result<(HashSet<PathBuf>, HashSet<PathBuf>)> {
@@ -355,6 +361,20 @@ mod tests {
     use crate::test::test::TestEnv;
     use crate::worker::Worker;
     use crate::indexer::Indexer;
+
+    
+    #[test]
+    fn test_add_task() {
+        let (_, temp_test_data_worker) = prepare_test_data_worker();
+        let worker = Worker::new().unwrap();
+
+        let task_type = TaskType::DIRECTORY;
+        let path = temp_test_data_worker.join("office");
+
+        let id = worker.add_task(&task_type, &path).unwrap();
+        let id2 = worker.add_task(&task_type, &path).unwrap();
+        assert_eq!(id, id2);
+    }
 
     fn prepare_test_data_worker() -> (TestEnv, PathBuf) {
         let env = TestEnv::new();
