@@ -276,17 +276,19 @@ impl Reader for PdfReader {
 mod tests {
     use super::*;
 
+    const TEST_DATA_DIR: &str = "../test_data/reader";
+
     #[test]
     fn test_composite_reader() {
         let reader = CompositeReader::new().unwrap();
-        let items = reader.read(Path::new("../test_data/1.txt")).unwrap();
+        let items = reader.read(&Path::new(TEST_DATA_DIR).join("test.txt")).unwrap();
         assert_eq!(items.len(), 4);
     }
 
     #[test]
     fn test_composite_unknown_extension() {
         let reader = CompositeReader::new().unwrap();
-        let result = reader.read(Path::new("../test_data/1.xyz"));
+        let result = reader.read(&Path::new(TEST_DATA_DIR).join("test.xyz"));
         assert!(result.is_err());
         assert_eq!(result.unwrap_err().to_string(), "Unsupported file type");
     }
@@ -295,7 +297,7 @@ mod tests {
     fn test_txt_reader() {
         let reader = TxtReader;
         assert_eq!(reader.supports(), vec!["txt", "md", "markdown"]);
-        let items = reader.read(Path::new("../test_data/1.txt")).unwrap();
+        let items = reader.read(&Path::new(TEST_DATA_DIR).join("test.txt")).unwrap();
         assert_eq!(items.len(), 4);
     }
 
@@ -304,7 +306,7 @@ mod tests {
         let reader = DocxReader;
         assert_eq!(reader.supports(), vec!["docx"]);
         let items = reader
-            .read(Path::new("../test_data/office/test.docx"))
+            .read(&Path::new(TEST_DATA_DIR).join("office/test.docx"))
             .unwrap();
         // println!("Items: {:?}", items);
         assert_eq!(items.len(), 10);
@@ -315,7 +317,7 @@ mod tests {
         let reader = PptxReader;
         assert_eq!(reader.supports(), vec!["pptx"]);
         let items = reader
-            .read(Path::new("../test_data/office/test.pptx"))
+            .read(&Path::new(TEST_DATA_DIR).join("office/test.pptx"))
             .unwrap();
         // println!("Items: {:?}", items);
         assert_eq!(items.len(), 5);
@@ -325,7 +327,7 @@ mod tests {
     fn test_pdf_reader() {
         let reader = PdfReader;
         assert_eq!(reader.supports(), vec!["pdf"]);
-        let items = reader.read(Path::new("../test_data/test.pdf")).unwrap();
+        let items = reader.read(&Path::new(TEST_DATA_DIR).join("test.pdf")).unwrap();
         // println!("Items: {:?}", items);
         assert_eq!(items.len(), 1);
     }

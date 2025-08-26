@@ -1,5 +1,5 @@
 use std::env;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use directories::ProjectDirs;
 
@@ -10,7 +10,7 @@ const PROJECT_APPLICATION: &str = "DeepIndex";
 
 pub fn get_project_dirs() -> PathBuf {
     if let Ok(val) = env::var("DEEPINDEX_TEST_DIR") {
-        PathBuf::from(val)
+        PathBuf::from(Path::new(&val).join("data"))
     } else {
         ProjectDirs::from(PROJECT_QUALIFIER, PROJECT_ORGANIZATION, PROJECT_APPLICATION)
             .unwrap()

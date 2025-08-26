@@ -31,9 +31,9 @@ pub struct SearchResultItem {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct IndexStatusStat {
-    directories: usize,
-    files: usize,
-    items: usize,
+    pub directories: usize,
+    pub files: usize,
+    pub items: usize,
 }
 
 pub struct Indexer {}
@@ -151,7 +151,7 @@ impl Indexer {
         let file_name = file.file_name().unwrap().to_str().unwrap();
         let conn = get_pool()?;
         let mut stmt = conn.prepare(
-            r"SELECT name, directories.path, modified_time 
+            r"SELECT files.name, directories.path, files.modified_time 
             FROM files
             join directories
             on files.directory_id = directories.id
@@ -175,6 +175,7 @@ impl Indexer {
         let modified_time = self.get_modified_time(&file)?;
 
         let conn = get_pool()?;
+        // TODO 需要加事务，以及其他的方法
         let file_id: i64 = conn.query_row(
             "INSERT INTO files (directory_id, name, modified_time) VALUES (?1, ?2, ?3) ON CONFLICT(directory_id, name) DO UPDATE SET directory_id = directory_id RETURNING id",
             params![&directory_id, file_name, &modified_time],
@@ -409,6 +410,8 @@ mod tests {
     use super::*;
     use crate::test::test::TestEnv;
 
+    const TEST_DATA_DIR: &str = "../test_data/indexer";
+
     #[test]
     fn test_reset_index() {
         let _env = TestEnv::new();
@@ -425,7 +428,7 @@ mod tests {
     fn test_write_directory() {
         let _env = TestEnv::new();
         let indexer = Indexer::new().unwrap();
-        let path = Path::new("../test_data/").canonicalize().unwrap();
+        let path = Path::new(TEST_DATA_DIR).canonicalize().unwrap();
         indexer.write_directory(&path).unwrap();
     }
 
@@ -433,11 +436,11 @@ mod tests {
     fn test_get_directory() {
         let _env = TestEnv::new();
         let indexer = Indexer::new().unwrap();
-        let path = Path::new("../test_data/").canonicalize().unwrap();
+        let path = Path::new(TEST_DATA_DIR).canonicalize().unwrap();
         indexer.write_directory(&path).unwrap();
 
         let dir = indexer.get_directory(&path).unwrap();
-        assert_eq!(dir.name, "test_data");
+        assert_eq!(dir.name, "indexer");
         assert_eq!(dir.path, path.canonicalize().unwrap().to_str().unwrap());
     }
 
@@ -446,7 +449,7 @@ mod tests {
         let _env = TestEnv::new();
         let indexer = Indexer::new().unwrap();
 
-        let file = Path::new("../test_data/1.txt").canonicalize().unwrap();
+        let file = Path::new(TEST_DATA_DIR).join("1.txt").canonicalize().unwrap();
         indexer.write_directory(file.parent().unwrap()).unwrap();
 
         let items = vec![
@@ -458,6 +461,29 @@ mod tests {
             },
         ];
         indexer.write_file_items(&file, items).unwrap();
+    }
+
+    #[test]
+    fn test_get_file() {
+        let _env = TestEnv::new();
+        let indexer = Indexer::new().unwrap();
+
+        let file = Path::new(TEST_DATA_DIR).join("1.txt").canonicalize().unwrap();
+        indexer.write_directory(file.parent().unwrap()).unwrap();
+
+        let items = vec![
+            Item {
+                content: "Hello, world!".into(),
+            },
+            Item {
+                content: "This is a test.".into(),
+            },
+        ];
+        indexer.write_file_items(&file, items).unwrap();
+
+        let file_result = indexer.get_file(&file).unwrap();
+        assert_eq!(file_result.name, "1.txt");
+        assert_eq!(file_result.path, file.parent().unwrap().to_str().unwrap());
     }
 
     #[test]
@@ -465,7 +491,7 @@ mod tests {
         let _env = TestEnv::new();
         let indexer = Indexer::new().unwrap();
 
-        let file = Path::new("../test_data/1.txt").canonicalize().unwrap();
+        let file = Path::new(TEST_DATA_DIR).join("1.txt").canonicalize().unwrap();
         indexer.write_directory(file.parent().unwrap()).unwrap();
 
         let items = vec![
@@ -478,7 +504,7 @@ mod tests {
         ];
         indexer.write_file_items(&file, items).unwrap();
 
-        let sub_dir_path = Path::new("../test_data/office/").canonicalize().unwrap();
+        let sub_dir_path = Path::new(TEST_DATA_DIR).join("office").canonicalize().unwrap();
         indexer.write_directory(&sub_dir_path).unwrap();
 
         let (dir_result, file_result) = indexer
@@ -486,22 +512,20 @@ mod tests {
             .unwrap();
         assert_eq!(dir_result.len(), 1);
         assert_eq!(file_result.len(), 1);
-
-        // println!("dir_result: {:?}", dir_result);
     }
 
     #[test]
     fn test_search_directory() {
         let _env = TestEnv::new();
         let indexer = Indexer::new().unwrap();
-        let dir = Path::new("../test_data/").canonicalize().unwrap();
+        let dir = Path::new(TEST_DATA_DIR).canonicalize().unwrap();
         indexer.write_directory(&dir).unwrap();
 
-        let result = indexer.search_directory("test_data", 0, 10).unwrap();
+        let result = indexer.search_directory("indexer", 0, 10).unwrap();
         assert_eq!(result.len(), 1);
-        assert_eq!(result[0].name, "test_data");
+        assert_eq!(result[0].name, "indexer");
 
-        let result = indexer.search_directory("test_data", 1, 10).unwrap();
+        let result = indexer.search_directory("indexer", 1, 10).unwrap();
         assert_eq!(result.len(), 0);
     }
 
@@ -517,7 +541,7 @@ mod tests {
                 content: "This is a test.".into(),
             },
         ];
-        let file = Path::new("../test_data/1.txt").canonicalize().unwrap();
+        let file = Path::new(TEST_DATA_DIR).join("1.txt").canonicalize().unwrap();
         indexer.write_directory(file.parent().unwrap()).unwrap();
         indexer.write_file_items(&file, items).unwrap();
 
@@ -542,7 +566,7 @@ mod tests {
                 content: "This is a test.".into(),
             },
         ];
-        let file = Path::new("../test_data/1.txt").canonicalize().unwrap();
+        let file = Path::new(TEST_DATA_DIR).join("1.txt").canonicalize().unwrap();
         indexer.write_directory(file.parent().unwrap()).unwrap();
         indexer.write_file_items(&file, items).unwrap();
 
@@ -565,7 +589,7 @@ mod tests {
                 content: "This is a test.".into(),
             },
         ];
-        let file = Path::new("../test_data/1.txt").canonicalize().unwrap();
+        let file = Path::new(TEST_DATA_DIR).join("1.txt").canonicalize().unwrap();
         indexer.write_directory(file.parent().unwrap()).unwrap();
         indexer.write_file_items(&file, items).unwrap();
 
@@ -590,11 +614,11 @@ mod tests {
                 content: "This is a test.".into(),
             },
         ];
-        let file = Path::new("../test_data/1.txt").canonicalize().unwrap();
+        let file = Path::new(TEST_DATA_DIR).join("1.txt").canonicalize().unwrap();
         indexer.write_directory(file.parent().unwrap()).unwrap();
         indexer.write_file_items(&file, items).unwrap();
         indexer
-            .write_directory(&Path::new("../test_data/office/").canonicalize().unwrap())
+            .write_directory(&Path::new(TEST_DATA_DIR).join("office").canonicalize().unwrap())
             .unwrap();
 
         indexer.delete_directory(file.parent().unwrap()).unwrap();
@@ -618,7 +642,7 @@ mod tests {
                 content: "This is a test.".into(),
             },
         ];
-        let file = Path::new("../test_data/1.txt").canonicalize().unwrap();
+        let file = Path::new(TEST_DATA_DIR).join("1.txt").canonicalize().unwrap();
         indexer.write_directory(file.parent().unwrap()).unwrap();
         indexer.write_file_items(&file, items).unwrap();
 

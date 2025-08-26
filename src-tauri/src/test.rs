@@ -2,12 +2,11 @@
 pub mod test {
     use std::env;
     use tempfile::Builder;
-
     use crate::setup_backend;
 
     pub struct TestEnv {
         #[allow(dead_code)]
-        temp_dir: tempfile::TempDir,
+        pub temp_dir: tempfile::TempDir,
     }
 
     impl TestEnv {
