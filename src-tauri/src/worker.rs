@@ -26,19 +26,19 @@ pub struct Worker {
 
 #[derive(Debug, PartialEq, EnumString, Display)]
 enum TaskType {
-    #[strum(serialize = "DIRECTORY")]
+    #[strum(to_string = "DIRECTORY")]
     DIRECTORY,
-    #[strum(serialize = "FILE")]
+    #[strum(to_string = "FILE")]
     FILE,
 }
 
 #[derive(Debug, PartialEq, EnumString, Display)]
 enum TaskStatus {
-    #[strum(serialize = "PENDING")]
+    #[strum(to_string = "PENDING")]
     PENDING,
-    #[strum(serialize = "RUNNING")]
+    #[strum(to_string = "RUNNING")]
     RUNNING,
-    #[strum(serialize = "FAILED")]
+    #[strum(to_string = "FAILED")]
     FAILED,
 }
 
@@ -126,7 +126,7 @@ impl Worker {
         let now = Local::now().to_rfc3339();
         let id = conn.query_one(
             r"INSERT INTO tasks (type, path, status, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5) ON CONFLICT(type, path) 
-                DO UPDATE SET status=?3 and updated_at=?5 RETURNING id",
+                DO UPDATE SET status = ?3, updated_at = ?5 RETURNING id",
             params![
                 task_type.to_string(),
                 path,
@@ -161,89 +161,99 @@ impl Worker {
     }
 
     pub fn submit_index_all_files(&self, path: &Path) -> Result<()> {
-        if path.is_dir() {
-            if let Ok(index_dir) = self.indexer.get_directory(path) {
-                // 数据库已经有这个目录了
-                let modified_time = self.indexer.get_modified_time(path)?;
-                if index_dir.modified_time != modified_time {
-                    info!(
-                        "目录索引过，但目录时间发生变更。目录: {} 原时间: {} 现时间:{}",
-                        path.display(),
-                        index_dir.modified_time,
-                        modified_time
-                    );
-                    self.indexer.write_directory(path)?;
-                    info!("目录时间已更新。目录: {}", path.display());
-                    // 目录修改了
-                    let (index_sub_dirs, index_sub_files) =
-                        self.indexer.get_sub_directories_and_files(path)?;
-                    let (current_sub_dirs, current_sub_files) = self.split_dir_contents(path)?;
+        if path.exists() {
+            if path.is_dir() {
+                if let Ok(index_dir) = self.indexer.get_directory(path) {
+                    // 数据库已经有这个目录了
+                    let modified_time = self.indexer.get_modified_time(path)?;
+                    if index_dir.modified_time != modified_time {
+                        info!(
+                            "目录索引过，但目录时间发生变更。目录: {} 原时间: {} 现时间:{}",
+                            path.display(),
+                            index_dir.modified_time,
+                            modified_time
+                        );
+                        self.add_task(&TaskType::DIRECTORY, path)?;
+                        info!("目录时间已更新。目录: {}", path.display());
+                        // 目录修改了
+                        let (index_sub_dirs, index_sub_files) =
+                            self.indexer.get_sub_directories_and_files(path)?;
+                        let (current_sub_dirs, current_sub_files) = self.split_dir_contents(path)?;
 
-                    let index_sub_dirs = HashSet::from_iter(
-                        index_sub_dirs
-                            .iter()
-                            .map(|p| Path::new(&p.path).to_path_buf()),
-                    );
-                    let index_sub_files = HashSet::from_iter(
-                        index_sub_files
-                            .iter()
-                            .map(|p| Path::new(&p.path).join(&p.name).to_path_buf()),
-                    );
+                        let index_sub_dirs = HashSet::from_iter(
+                            index_sub_dirs
+                                .iter()
+                                .map(|p| Path::new(&p.path).to_path_buf()),
+                        );
+                        let index_sub_files = HashSet::from_iter(
+                            index_sub_files
+                                .iter()
+                                .map(|p| Path::new(&p.path).join(&p.name).to_path_buf()),
+                        );
 
-                    for dir in index_sub_dirs.difference(&current_sub_dirs) {
-                        // 删除的目录
-                        info!("删除目录索引: {}", dir.display());
-                        debug!("index_sub_dirs: {:?}", index_sub_dirs);
-                        debug!("current_sub_dirs: {:?}", current_sub_dirs);
-                        self.indexer.delete_directory(dir)?;
+                        for dir in index_sub_dirs.difference(&current_sub_dirs) {
+                            // 删除的目录
+                            info!("删除目录索引: {}", dir.display());
+                            debug!("index_sub_dirs: {:?}", index_sub_dirs);
+                            debug!("current_sub_dirs: {:?}", current_sub_dirs);
+                            self.indexer.delete_directory(dir)?;
+                        }
+                        for file in index_sub_files.difference(&current_sub_files) {
+                            // 删除的文件
+                            info!("删除文件索引: {}", file.display());
+                            debug!("index_sub_files: {:?}", index_sub_files);
+                            debug!("current_sub_files: {:?}", current_sub_files);
+                            self.indexer.delete_file(file)?;
+                        }
                     }
-                    for file in index_sub_files.difference(&current_sub_files) {
-                        // 删除的文件
-                        info!("删除文件索引: {}", file.display());
-                        debug!("index_sub_files: {:?}", index_sub_files);
-                        debug!("current_sub_files: {:?}", current_sub_files);
-                        self.indexer.delete_file(file)?;
-                    }
+                } else {
+                    // 数据库中没有这个目录
+                    info!("目录未索引，添加任务。目录: {}", path.display());
+                    self.add_task(&TaskType::DIRECTORY, path)?;
                 }
-            } else {
-                // 数据库中没有这个目录
-                info!("目录未索引，添加任务。目录: {}", path.display());
-                self.add_task(&TaskType::DIRECTORY, path)?;
-            }
 
-            for entry in fs::read_dir(path)? {
-                let entry = entry?;
-                let path = entry.path();
+                for entry in fs::read_dir(path)? {
+                    let entry = entry?;
+                    let path = entry.path();
 
-                if path.is_file() {
-                    if let Ok(index_file) = self.indexer.get_file(&path) {
-                        let modified_time = self.indexer.get_modified_time(&path)?;
-                        if index_file.modified_time == modified_time {
-                            continue;
+                    if path.is_file() {
+                        if let Ok(index_file) = self.indexer.get_file(&path) {
+                            let modified_time = self.indexer.get_modified_time(&path)?;
+                            if index_file.modified_time == modified_time {
+                                continue;
+                            } else {
+                                info!(
+                                    "文件索引过，但文件时间发生变更。文件: {} 原时间: {} 现时间:{}",
+                                    path.display(),
+                                    index_file.modified_time,
+                                    modified_time
+                                );
+                                self.indexer.delete_file(&path)?;
+                                if self.reader.supports(&path)? {
+                                    self.add_task(&TaskType::FILE, &path)?;
+                                }
+                            }
                         } else {
-                            info!(
-                                "文件索引过，但文件时间发生变更。文件: {} 原时间: {} 现时间:{}",
-                                path.display(),
-                                index_file.modified_time,
-                                modified_time
-                            );
-                            self.indexer.delete_file(&path)?;
                             if self.reader.supports(&path)? {
+                                info!("文件未索引，添加任务。文件: {}", path.display());
                                 self.add_task(&TaskType::FILE, &path)?;
                             }
                         }
-                    } else {
-                        if self.reader.supports(&path)? {
-                            info!("文件未索引，添加任务。文件: {}", path.display());
-                            self.add_task(&TaskType::FILE, &path)?;
-                        }
+                    } else if path.is_dir() {
+                        self.submit_index_all_files(&path)?;
                     }
-                } else if path.is_dir() {
-                    self.submit_index_all_files(&path)?;
+                }
+            } else if path.is_file() {
+                self.indexer.delete_file(&path)?;
+                if self.reader.supports(path)? {
+                    info!("添加文件索引任务。文件: {}", path.display());
+                    self.add_task(&TaskType::FILE, path)?;
                 }
             }
         } else {
-            error!("路径不存在: {}", path.display());
+            info!("尝试删除目录或文件: {}", path.display());
+            self.indexer.delete_directory(path)?;
+            self.indexer.delete_file(path)?;
         }
         Ok(())
     }
@@ -285,19 +295,21 @@ impl Worker {
         let num_cpus = std::thread::available_parallelism().map_or(1, |n| n.get());
         let num_threads = std::cmp::max(1, num_cpus / 2);
         info!("启动 {} 索引线程", num_threads);
-        for _ in 0..num_threads {
-            std::thread::spawn(move || {
-                let worker = Worker::new().unwrap();
-                loop {
-                    match worker.process_task() {
-                        Ok(_) => {}
-                        Err(e) => {
-                            error!("处理任务失败: {}", e);
-                            error!("{}", e.backtrace());
+        for i in 0..num_threads {
+            thread::Builder::new()
+                .name(format!("index-worker-thread-{}", i))
+                .spawn(move || {
+                    let worker = Worker::new().unwrap();
+                    loop {
+                        match worker.process_task() {
+                            Ok(_) => {}
+                            Err(e) => {
+                                error!("处理任务失败: {}", e);
+                                error!("{}", e.backtrace());
+                            }
                         }
                     }
-                }
-            });
+                }).unwrap();
         }
         Ok(())
     }
@@ -329,17 +341,25 @@ impl Worker {
 
         match task {
             Ok((id, task_type, path)) => {
+                debug!("处理任务: {:?}", (&id, &task_type, &path));
                 let path = Path::new(&path);
                 let task_type = TaskType::from_str(&task_type).unwrap();
                 match task_type {
                     TaskType::DIRECTORY => {
-                        // 处理目录任务
-                        self.indexer.write_directory(path)?;
+                        if path.is_dir() {
+                            self.indexer.write_directory(path)?;
+                        }
                     }
                     TaskType::FILE => {
-                        // 处理文件任务
-                        if let Ok(items) = self.reader.read(path) {
-                            self.indexer.write_file_items(path, items)?;
+                        if path.is_file() {
+                            match self.reader.read(path) {
+                                Ok(items) => {
+                                    self.indexer.write_file_items(path, items)?;
+                                },
+                                Err(e) => {
+                                    error!("读取文件失败: {} 错误: {}", path.display(), e);
+                                }
+                            }
                         }
                     }
                 }
@@ -432,7 +452,7 @@ mod tests {
             .submit_index_all_files(&temp_test_data_worker)
             .unwrap();
         let worker_status = worker.get_tasks_status().unwrap();
-        assert_eq!(worker_status.pending, 0);
+        assert_eq!(worker_status.pending, 1);
 
         let indexer_status = indexer.get_index_status().unwrap();
         assert_eq!(indexer_status.directories, 2);
@@ -450,7 +470,7 @@ mod tests {
             .submit_index_all_files(&temp_test_data_worker)
             .unwrap();
         let worker_status = worker.get_tasks_status().unwrap();
-        assert_eq!(worker_status.pending, 0);
+        assert_eq!(worker_status.pending, 1);
 
         let indexer_status = indexer.get_index_status().unwrap();
         assert_eq!(indexer_status.directories, 1);
@@ -469,9 +489,11 @@ mod tests {
             .submit_index_all_files(&temp_test_data_worker)
             .unwrap();
         let worker_status = worker.get_tasks_status().unwrap();
-        assert_eq!(worker_status.pending, 1);
+        assert_eq!(worker_status.pending, 2);
 
-        worker.process_task().unwrap();
+        for _ in 0..2 {
+            worker.process_task().unwrap();
+        }
 
         let indexer_status = indexer.get_index_status().unwrap();
         assert_eq!(indexer_status.directories, 2);
@@ -489,9 +511,11 @@ mod tests {
             .submit_index_all_files(&temp_test_data_worker)
             .unwrap();
         let worker_status = worker.get_tasks_status().unwrap();
-        assert_eq!(worker_status.pending, 1);
+        assert_eq!(worker_status.pending, 2);
 
-        worker.process_task().unwrap();
+        for _ in 0..2 {
+            worker.process_task().unwrap();
+        }
 
         let indexer_status = indexer.get_index_status().unwrap();
         assert_eq!(indexer_status.directories, 3);
@@ -510,9 +534,9 @@ mod tests {
             .submit_index_all_files(&temp_test_data_worker)
             .unwrap();
         let worker_status = worker.get_tasks_status().unwrap();
-        assert_eq!(worker_status.pending, 2);
+        assert_eq!(worker_status.pending, 3);
 
-        for _ in 0..2 {
+        for _ in 0..3 {
             worker.process_task().unwrap();
         }
 
@@ -552,9 +576,9 @@ mod tests {
             .submit_index_all_files(&temp_test_data_worker)
             .unwrap();
         let worker_status = worker.get_tasks_status().unwrap();
-        assert_eq!(worker_status.pending, 2);
+        assert_eq!(worker_status.pending, 3);
 
-        for _ in 0..2 {
+        for _ in 0..3 {
             worker.process_task().unwrap();
         }
 

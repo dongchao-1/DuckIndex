@@ -4,6 +4,7 @@ use rusqlite::params;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, MAIN_SEPARATOR};
+use rusqlite::Error as RusqliteError;
 
 use crate::reader::Item;
 use crate::sqlite::get_pool;
@@ -177,7 +178,7 @@ impl Indexer {
         let mut conn = get_pool()?;
         let tx = conn.transaction()?;
         let file_id: i64 = tx.query_row(
-            "INSERT INTO files (directory_id, name, modified_time) VALUES (?1, ?2, ?3) ON CONFLICT(directory_id, name) DO UPDATE SET directory_id = directory_id RETURNING id",
+            "INSERT INTO files (directory_id, name, modified_time) VALUES (?1, ?2, ?3) ON CONFLICT(directory_id, name) DO UPDATE SET modified_time = ?3 RETURNING id",
             params![&directory_id, file_name, &modified_time],
             |row| row.get(0),
         )?;
@@ -222,10 +223,10 @@ impl Indexer {
         let dir_path = directory.to_str().unwrap();
         let conn = get_pool()?;
         let mut stmt = conn.prepare(
-            "SELECT name, path, modified_time FROM directories WHERE path != ?1 AND path LIKE ?2 AND path NOT LIKE ?3",
+            "SELECT name, path, modified_time FROM directories WHERE path LIKE ?1 AND path NOT LIKE ?2",
         )?;
         let rows = stmt.query_map(
-            params![dir_path, format!("{}%", dir_path), format!("{}%{}%", dir_path, MAIN_SEPARATOR)],
+            params![format!("{}{}%", dir_path, MAIN_SEPARATOR), format!("{}{}%{}%", dir_path, MAIN_SEPARATOR, MAIN_SEPARATOR)],
             |row| {
             Ok(SearchResultDirectory {
                 name: row.get(0)?,
@@ -361,18 +362,29 @@ impl Indexer {
         let directory_path = file.parent().unwrap().to_str().unwrap();
         let mut conn = get_pool()?;
         let tx = conn.transaction()?;
-        let file_id: i64 = tx.query_row(
+        let file_id: Result<i64, rusqlite::Error> = tx.query_row(
             "SELECT id FROM files WHERE name = ?1 and directory_id in (SELECT id FROM directories WHERE path = ?2)",
             params![file_name, &directory_path],
             |row| row.get(0),
-        )?;
+        );
+        let file_id = match file_id {
+            Err(e) => {
+                match e {
+                    RusqliteError::QueryReturnedNoRows => {
+                        return Ok(());
+                    }
+                    _ => return Err(e.into()),
+                }
+            }
+            Ok(id) => id,
+        };
 
         tx.execute(
             "DELETE FROM items WHERE file_id = ?1",
-            &[&file_id.to_string()],
+            params![&file_id],
         )?;
 
-        tx.execute("DELETE FROM files WHERE id = ?1", &[&file_id.to_string()])?;
+        tx.execute("DELETE FROM files WHERE id = ?1", params![&file_id])?;
         tx.commit()?;
 
         Ok(())
@@ -608,6 +620,26 @@ mod tests {
         assert_eq!(file_result.len(), 0);
     }
 
+    
+    #[test]
+    fn test_delete_file_not_exists() {
+        let _env = TestEnv::new();
+        let indexer = Indexer::new().unwrap();
+        let items = vec![
+            Item {
+                content: "Hello, world!".into(),
+            },
+            Item {
+                content: "This is a test.".into(),
+            },
+        ];
+        let file = Path::new(TEST_DATA_DIR).join("1.txt").canonicalize().unwrap();
+        indexer.write_directory(file.parent().unwrap()).unwrap();
+        indexer.write_file_items(&file, items).unwrap();
+
+        indexer.delete_file(&file.parent().unwrap().join("non_existent.txt")).unwrap();
+    }
+
     #[test]
     fn test_delete_directory() {
         let _env = TestEnv::new();
@@ -634,6 +666,29 @@ mod tests {
             .unwrap();
         assert_eq!(dir_result.len(), 0);
         assert_eq!(file_result.len(), 0);
+    }
+
+
+    #[test]
+    fn test_delete_directory_not_exists() {
+        let _env = TestEnv::new();
+        let indexer = Indexer::new().unwrap();
+        let items = vec![
+            Item {
+                content: "Hello, world!".into(),
+            },
+            Item {
+                content: "This is a test.".into(),
+            },
+        ];
+        let file = Path::new(TEST_DATA_DIR).join("1.txt").canonicalize().unwrap();
+        indexer.write_directory(file.parent().unwrap()).unwrap();
+        indexer.write_file_items(&file, items).unwrap();
+        indexer
+            .write_directory(&Path::new(TEST_DATA_DIR).join("office").canonicalize().unwrap())
+            .unwrap();
+
+        indexer.delete_directory(&file.parent().unwrap().join("not_exists_path")).unwrap();
     }
 
     #[test]

@@ -22,7 +22,7 @@ const directories = ref(0);
 const files = ref(0);
 const items = ref(0);
 
-mainWindow.listen("index-task-update", ({ payload }: { event: string; payload: any }) => {
+mainWindow.listen("status-update", ({ payload }: { event: string; payload: any }) => {
   pending.value = payload.task_status_stat.pending;
   running.value = payload.task_status_stat.running;
   failed.value = payload.task_status_stat.failed;

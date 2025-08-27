@@ -16,6 +16,7 @@ use crate::log::init_logger;
 use crate::sqlite::init_pool;
 use crate::worker::TaskStatusStat;
 use crate::worker::Worker;
+use crate::monitor::Monitor;
 
 mod config;
 mod dirs;
@@ -26,6 +27,7 @@ mod sqlite;
 // mod indexer_tantivy;
 mod test;
 mod worker;
+mod monitor;
 
 #[derive(Debug, Clone, Serialize)]
 struct TotalStatus {
@@ -34,18 +36,22 @@ struct TotalStatus {
 }
 
 fn setup_index_task(window: tauri::WebviewWindow) {
-    std::thread::spawn(move || loop {
-        let worker = Worker::new().unwrap();
-        let indexer = Indexer::new().unwrap();
-        let task_status_stat = worker.get_tasks_status().unwrap();
-        let index_status_stat = indexer.get_index_status().unwrap();
+    thread::Builder::new()
+        .name("status-updater".to_string())
+        .spawn(move || {
+            let worker = Worker::new().unwrap();
+            let indexer = Indexer::new().unwrap();
+            loop {
+                let task_status_stat = worker.get_tasks_status().unwrap();
+                let index_status_stat = indexer.get_index_status().unwrap();
 
-        window.emit("index-task-update", TotalStatus {
-            task_status_stat,
-            index_status_stat,
+                window.emit("status-update", TotalStatus {
+                    task_status_stat,
+                    index_status_stat,
+                }).unwrap();
+                thread::sleep(Duration::from_secs(1));
+            }
         }).unwrap();
-        thread::sleep(Duration::from_secs(1));
-    });
 }
 
 #[tauri::command]
@@ -109,14 +115,19 @@ pub fn run() {
     setup_backend();
 
     info!("开始检查已有目录");
-    thread::spawn(|| {
-        let worker = Worker::new().unwrap();
-        Config::get_index_dir_paths().unwrap().iter().for_each(|path| {
-            info!("开始检查目录: {}", path);
-            worker.submit_index_all_files(Path::new(path)).unwrap();
+    thread::Builder::new()
+        .name("initial-check-index-dir-paths".to_string())
+        .spawn(|| {
+            let worker = Worker::new().unwrap();
+            Config::get_index_dir_paths().unwrap().iter().for_each(|path| {
+                info!("开始检查目录: {}", path);
+                worker.submit_index_all_files(Path::new(path)).unwrap();
             info!("目录检查完成: {}", path);
         });
-    });
+    }).unwrap();
+
+    info!("启动后台变更监听");
+    Monitor::start_monitor();
 
     info!("启动后台索引服务");
     Worker::start_process().unwrap();
