@@ -16,7 +16,7 @@ use crate::log::init_logger;
 use crate::sqlite::init_pool;
 use crate::worker::TaskStatusStat;
 use crate::worker::Worker;
-use crate::monitor::Monitor;
+use crate::monitor::get_monitor;
 
 mod config;
 mod dirs;
@@ -127,7 +127,7 @@ pub fn run() {
     }).unwrap();
 
     info!("启动后台变更监听");
-    Monitor::start_monitor();
+    get_monitor();
 
     info!("启动后台索引服务");
     Worker::start_process().unwrap();

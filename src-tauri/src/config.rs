@@ -2,6 +2,7 @@ use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
 
 use crate::sqlite::get_pool;
+use crate::monitor::set_watched_paths;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Config {}
@@ -67,11 +68,14 @@ impl Config {
 
     pub fn set_index_dir_paths(index_dir_paths: Vec<String>) -> Result<()> {
         let conn = get_pool()?;
-        let index_dir_paths = serde_json::to_string(&index_dir_paths)?;
+        let index_dir_paths_str = serde_json::to_string(&index_dir_paths)?;
         conn.execute(
             "update config set value = $1 where key = 'index_dir_paths'",
-            [index_dir_paths],
+            [index_dir_paths_str],
         )?;
+
+        set_watched_paths(index_dir_paths);
+        
         Ok(())
     }
 }
@@ -92,8 +96,8 @@ mod tests {
     fn test_set_index_dir_paths() {
         let _env = TestEnv::new();
         let result = Config::set_index_dir_paths(vec![
-            "/path/to/index".into(),
-            "/path/to/another/index".into(),
+            "../test_data/indexer".into(),
+            "../test_data/reader".into(),
         ]);
         assert!(result.is_ok());
 
@@ -101,8 +105,8 @@ mod tests {
         assert_eq!(
             index_dir_paths,
             vec![
-                String::from("/path/to/index"),
-                String::from("/path/to/another/index")
+                String::from("../test_data/indexer"),
+                String::from("../test_data/reader")
             ]
         );
     }
