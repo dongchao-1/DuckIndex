@@ -1,5 +1,6 @@
 use ::log::info;
 use serde::Serialize;
+use tauri::RunEvent;
 use std::path::Path;
 use std::thread;
 use std::time::Duration;
@@ -15,6 +16,7 @@ use crate::indexer::SearchResultItem;
 use crate::log::init_logger;
 use crate::monitor::add_watched_path;
 use crate::monitor::del_watched_path;
+use crate::sqlite::close_pool;
 use crate::sqlite::init_pool;
 use crate::worker::TaskStatusStat;
 use crate::worker::Worker;
@@ -155,6 +157,11 @@ pub fn run() {
             del_index_path,
             get_index_dir_paths
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while running tauri application")
+        .run(|_app_handle, event| {
+            if let RunEvent::Exit = event {
+                close_pool();
+            }
+        });
 }

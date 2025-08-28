@@ -392,7 +392,7 @@ mod tests {
     
     #[test]
     fn test_add_task() {
-        let (_, temp_test_data_worker) = prepare_test_data_worker();
+        let (_env, temp_test_data_worker) = prepare_test_data_worker();
         let worker = Worker::new().unwrap();
 
         let task_type = TaskType::DIRECTORY;
@@ -443,7 +443,7 @@ mod tests {
 
     #[test]
     fn test_index_all_files_delete_file() {
-        let (_, temp_test_data_worker) = prepare_test_data_worker();
+        let (_env, temp_test_data_worker) = prepare_test_data_worker();
         let worker = Worker::new().unwrap();
         let indexer = Indexer::new().unwrap();
 
@@ -461,7 +461,7 @@ mod tests {
 
     #[test]
     fn test_index_all_files_delete_directory() {
-        let (_, temp_test_data_worker) = prepare_test_data_worker();
+        let (_env, temp_test_data_worker) = prepare_test_data_worker();
         let worker = Worker::new().unwrap();
         let indexer = Indexer::new().unwrap();
 
@@ -480,7 +480,7 @@ mod tests {
     
     #[test]
     fn test_index_all_files_add_file() {
-        let (_, temp_test_data_worker) = prepare_test_data_worker();
+        let (_env, temp_test_data_worker) = prepare_test_data_worker();
         let worker = Worker::new().unwrap();
         let indexer = Indexer::new().unwrap();
 
@@ -502,7 +502,7 @@ mod tests {
 
     #[test]
     fn test_index_all_files_add_directory() {
-        let (_, temp_test_data_worker) = prepare_test_data_worker();
+        let (_env, temp_test_data_worker) = prepare_test_data_worker();
         let worker = Worker::new().unwrap();
         let indexer = Indexer::new().unwrap();
 
@@ -524,7 +524,7 @@ mod tests {
 
     #[test]
     fn test_index_all_files_add_directory_and_file() {
-        let (_, temp_test_data_worker) = prepare_test_data_worker();
+        let (_env, temp_test_data_worker) = prepare_test_data_worker();
         let worker = Worker::new().unwrap();
         let indexer = Indexer::new().unwrap();
 
@@ -547,7 +547,7 @@ mod tests {
 
     #[test]
     fn test_index_all_files_mod_file() {
-        let (_, temp_test_data_worker) = prepare_test_data_worker();
+        let (_env, temp_test_data_worker) = prepare_test_data_worker();
         let worker = Worker::new().unwrap();
         let indexer = Indexer::new().unwrap();
 
@@ -567,7 +567,7 @@ mod tests {
 
     #[test]
     fn test_index_all_files_mod_directory() {
-        let (_, temp_test_data_worker) = prepare_test_data_worker();
+        let (_env, temp_test_data_worker) = prepare_test_data_worker();
         let worker = Worker::new().unwrap();
         let indexer = Indexer::new().unwrap();
 
