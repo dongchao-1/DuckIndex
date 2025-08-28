@@ -134,16 +134,21 @@ impl Reader for DocxReader {
         loop {
             match xml_reader.read_event_into(&mut buf)? {
                 quickXmlEvent::Start(e) if e.name().as_ref() == b"w:p" => {
-                    if let Some(item) = self.create_item(&mut txt) {
-                        items.push(item);
+                    if !txt.trim().is_empty() {
+                        items.push(Item {
+                            content: txt.trim().to_string(),
+                        });
+                        txt.clear();
                     }
                 }
                 quickXmlEvent::Text(e) => {
                     txt.push_str(&e.decode()?);
                 }
                 quickXmlEvent::Eof => {
-                    if let Some(item) = self.create_item(&mut txt) {
-                        items.push(item);
+                    if !txt.trim().is_empty() {
+                        items.push(Item {
+                            content: txt.trim().to_string(),
+                        });
                     }
                     break;
                 } // 文件结束
@@ -160,22 +165,6 @@ impl Reader for DocxReader {
     }
 }
 
-impl DocxReader {
-    fn create_item(&self, txt: &mut String) -> Option<Item> {
-        let item = if !txt.trim().is_empty() {
-            let txt_ret = txt.trim().to_string();
-            txt.clear();
-            Some(Item {
-                content: txt_ret,
-            })
-        } else {
-            None
-        };
-
-        item
-    }
-}
-
 struct PptxReader;
 impl Reader for PptxReader {
     fn read(&self, file_path: &Path) -> Result<Vec<Item>> {
@@ -185,44 +174,42 @@ impl Reader for PptxReader {
         archive.extract(&temp_dir)?;
 
         let document_path = temp_dir.path().join("ppt/slides/");
-        let mut txt = String::new();
-        let mut buf = Vec::new();
         let mut items = vec![];
 
-        if let Ok(entries) = fs::read_dir(Path::new(&document_path)) {
-            for entry in entries {
-                if let Ok(entry) = entry {
-                    let file_name = entry.file_name();
-                    let file_name = file_name.to_string_lossy();
+        for entry in fs::read_dir(Path::new(&document_path))? {
+            let entry = entry?;
+            let file_name = entry.file_name();
+            let file_name = file_name.to_string_lossy();
 
-                    if file_name.starts_with("slide") && file_name.ends_with(".xml") {
-                        let reader = BufReader::new(File::open(entry.path())?);
-                        let mut xml_reader = quickXmlReader::from_reader(reader);
-                        loop {
-                            match xml_reader.read_event_into(&mut buf)? {
-                                quickXmlEvent::Start(e) if e.name().as_ref() == b"a:p" => {
-                                    if let Some(item) =
-                                        self.create_item(&mut txt)
-                                    {
-                                        items.push(item);
-                                    }
-                                }
-                                quickXmlEvent::Text(e) => {
-                                    txt.push_str(&e.decode()?);
-                                }
-                                quickXmlEvent::Eof => {
-                                    if let Some(item) =
-                                        self.create_item(&mut txt)
-                                    {
-                                        items.push(item);
-                                    }
-                                    break;
-                                } // 文件结束
-                                _ => (),
+            if file_name.starts_with("slide") && file_name.ends_with(".xml") {
+                let reader = BufReader::new(File::open(entry.path())?);
+                let mut xml_reader = quickXmlReader::from_reader(reader);
+                let mut txt = String::new();
+                let mut buf = Vec::new();
+                loop {
+                    match xml_reader.read_event_into(&mut buf)? {
+                        quickXmlEvent::Start(e) if e.name().as_ref() == b"a:p" => {
+                            if !txt.trim().is_empty() {
+                                items.push(Item {
+                                    content: txt.trim().to_string(),
+                                });
+                                txt.clear();
                             }
-                            buf.clear();
                         }
+                        quickXmlEvent::Text(e) => {
+                            txt.push_str(&e.decode()?);
+                        }
+                        quickXmlEvent::Eof => {
+                            if !txt.trim().is_empty() {
+                                items.push(Item {
+                                    content: txt.trim().to_string(),
+                                });
+                            }
+                            break;
+                        } // 文件结束
+                        _ => (),
                     }
+                    buf.clear();
                 }
             }
         }
@@ -231,22 +218,6 @@ impl Reader for PptxReader {
 
     fn supports(&self) -> Vec<&str> {
         vec!["pptx"]
-    }
-}
-
-impl PptxReader {
-    fn create_item(&self, txt: &mut String) -> Option<Item> {
-        let item = if !txt.trim().is_empty() {
-            let txt_ret = txt.trim().to_string();
-            txt.clear();
-            Some(Item {
-                content: txt_ret,
-            })
-        } else {
-            None
-        };
-
-        item
     }
 }
 
