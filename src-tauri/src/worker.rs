@@ -293,7 +293,7 @@ impl Worker {
 
     pub fn start_process() -> Result<()> {
         let num_cpus = std::thread::available_parallelism().map_or(1, |n| n.get());
-        let num_threads = std::cmp::max(1, num_cpus / 2);
+        let num_threads = std::cmp::max(1, num_cpus / 4);
         info!("启动 {} 索引线程", num_threads);
         for i in 0..num_threads {
             thread::Builder::new()
@@ -320,7 +320,7 @@ impl Worker {
             r"UPDATE tasks
             SET status = ?1, updated_at = ?2
             WHERE id = (
-                SELECT id FROM tasks 
+                SELECT id FROM tasks
                 WHERE status = ?3
                 ORDER BY id
                 LIMIT 1
@@ -341,29 +341,16 @@ impl Worker {
 
         match task {
             Ok((id, task_type, path)) => {
-                debug!("处理任务: {:?}", (&id, &task_type, &path));
-                let path = Path::new(&path);
-                let task_type = TaskType::from_str(&task_type).unwrap();
-                match task_type {
-                    TaskType::DIRECTORY => {
-                        if path.is_dir() {
-                            self.indexer.write_directory(path)?;
-                        }
+                match self.do_task(id, task_type, path) {
+                    Ok(_) => {
+                        conn.execute("delete from tasks where id = ?", params![id])?;
                     }
-                    TaskType::FILE => {
-                        if path.is_file() {
-                            match self.reader.read(path) {
-                                Ok(items) => {
-                                    self.indexer.write_file_items(path, items)?;
-                                },
-                                Err(e) => {
-                                    error!("读取文件失败: {} 错误: {}", path.display(), e);
-                                }
-                            }
-                        }
+                    Err(e) => {
+                        error!("处理任务失败: {}", e);
+                        error!("{}", e.backtrace());
+                        conn.execute("update tasks set status = ? where id = ?", params![TaskStatus::FAILED.to_string(), id])?;
                     }
                 }
-                conn.execute("delete from tasks where id = ?", params![id])?;
             }
             Err(rusqlite::Error::QueryReturnedNoRows) => {
                 // 没有待处理的任务，休息1s
@@ -371,7 +358,33 @@ impl Worker {
                 return Ok(());
             }
             Err(e) => {
-                return Err(anyhow!("Failed to process task: {}", e));
+                return Err(anyhow!("获取任务失败: {}", e));
+            }
+        }
+        Ok(())
+    }
+
+    fn do_task(&self, id: i64, task_type: String, path: String) -> Result<()> {
+        debug!("处理任务: {:?}", (&id, &task_type, &path));
+        let path = Path::new(&path);
+        let task_type = TaskType::from_str(&task_type).unwrap();
+        match task_type {
+            TaskType::DIRECTORY => {
+                if path.is_dir() {
+                    self.indexer.write_directory(path)?;
+                }
+            }
+            TaskType::FILE => {
+                if path.is_file() {
+                    match self.reader.read(path) {
+                        Ok(items) => {
+                            self.indexer.write_file_items(path, items)?;
+                        },
+                        Err(e) => {
+                            return Err(anyhow!("读取文件失败: {} 错误: {}", path.display(), e));
+                        }
+                    }
+                }
             }
         }
         Ok(())
