@@ -17,7 +17,7 @@ use strum::EnumString;
 
 use crate::indexer::Indexer;
 use crate::reader::CompositeReader;
-use crate::sqlite::get_pool;
+use crate::sqlite::get_conn;
 
 pub struct Worker {
     indexer: Indexer,
@@ -60,7 +60,7 @@ impl Worker {
     }
 
     fn check_worker_init() -> Result<()> {
-        let conn = get_pool()?;
+        let conn = get_conn()?;
         let row = conn
             .query_one("select version from worker_version", [], |row| {
                 row.get::<_, String>(0)
@@ -77,7 +77,7 @@ impl Worker {
     }
 
     fn reset_worker() -> Result<()> {
-        let conn = get_pool()?;
+        let conn = get_conn()?;
         conn.execute_batch(
             r"
             DROP TABLE IF EXISTS tasks;
@@ -101,7 +101,7 @@ impl Worker {
     }
 
     pub fn reset_running_tasks() -> Result<()> {
-        let conn = get_pool()?;
+        let conn = get_conn()?;
         conn.execute(
             "UPDATE tasks SET status = ?1, updated_at = ?2 WHERE status = ?3",
             params![
@@ -120,7 +120,7 @@ impl Worker {
     }
 
     fn add_task(&self, task_type: &TaskType, path: &Path) -> Result<i64> {
-        let conn = get_pool()?;
+        let conn = get_conn()?;
 
         let path = path.to_str().unwrap().to_string();
         let now = Local::now().to_rfc3339();
@@ -259,7 +259,7 @@ impl Worker {
     }
 
     pub fn get_tasks_status(&self) -> Result<TaskStatusStat> {
-        let conn = get_pool()?;
+        let conn = get_conn()?;
         let (pending, running, failed) = conn.query_one("SELECT COUNT(if(status = ?1, 1, NULL)), COUNT(if(status = ?2, 1, NULL)), COUNT(if(status = ?3, 1, NULL)) FROM tasks", 
             params![TaskStatus::PENDING.to_string(), TaskStatus::RUNNING.to_string(), TaskStatus::FAILED.to_string()], 
             |row| {
@@ -315,7 +315,7 @@ impl Worker {
     }
 
     pub fn process_task(&self) -> Result<()> {
-        let conn = get_pool()?;
+        let conn = get_conn()?;
         let task = conn.query_row(
             r"UPDATE tasks
             SET status = ?1, updated_at = ?2

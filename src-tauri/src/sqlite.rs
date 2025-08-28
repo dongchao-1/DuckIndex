@@ -9,20 +9,21 @@ use crate::dirs::get_index_dir;
 static POOL: OnceCell<Pool<SqliteConnectionManager>> = OnceCell::new();
 
 pub fn init_pool() {
-    let sqlite_path = get_index_dir();
+    POOL.get_or_init(|| {
+        let sqlite_path = get_index_dir();
 
-    let manager = SqliteConnectionManager::file(sqlite_path.join("index.db")).with_init(|conn| {
-        // 启用 auto_vacuum (1 是 FULL 模式)
-        conn.execute_batch(
-            "PRAGMA auto_vacuum = FULL; \
-                 PRAGMA journal_mode = WAL;",
-        )?;
-        Ok(())
+        let manager = SqliteConnectionManager::file(sqlite_path.join("index.db")).with_init(|conn| {
+            // 启用 auto_vacuum (1 是 FULL 模式)
+            conn.execute_batch(
+                "PRAGMA auto_vacuum = FULL; \
+                    PRAGMA journal_mode = WAL;",
+            )?;
+            Ok(())
+        });
+        Pool::new(manager).expect("Failed to create pool")
     });
-    let pool = Pool::new(manager).expect("Failed to create pool");
-    POOL.set(pool).expect("Pool already initialized");
 }
 
-pub fn get_pool() -> Result<PooledConnection<SqliteConnectionManager>> {
+pub fn get_conn() -> Result<PooledConnection<SqliteConnectionManager>> {
     Ok(POOL.get().expect("Pool not initialized").get()?)
 }

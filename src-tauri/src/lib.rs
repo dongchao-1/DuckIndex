@@ -13,6 +13,8 @@ use crate::indexer::SearchResultDirectory;
 use crate::indexer::SearchResultFile;
 use crate::indexer::SearchResultItem;
 use crate::log::init_logger;
+use crate::monitor::add_watched_path;
+use crate::monitor::del_watched_path;
 use crate::sqlite::init_pool;
 use crate::worker::TaskStatusStat;
 use crate::worker::Worker;
@@ -63,6 +65,8 @@ fn add_index_path(path: &str) {
     let worker = Worker::new().unwrap();
     info!("开始索引目录: {}", path);
     worker.submit_index_all_files(Path::new(&path)).unwrap();
+
+    add_watched_path(&path);
 }
 
 #[tauri::command]
@@ -74,6 +78,8 @@ fn del_index_path(path: &str) {
     let indexer = Indexer::new().unwrap();
     info!("开始删除目录: {}", path);
     indexer.delete_directory(Path::new(&path)).unwrap();
+
+    del_watched_path(path);
 }
 
 #[tauri::command]

@@ -3,7 +3,6 @@ use log::{debug, error, info};
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 use once_cell::sync::OnceCell;
 use std::{path::Path, sync::mpsc};
-use std::collections::HashSet;
 use std::sync::Mutex;
 
 use crate::config::Config;
@@ -11,21 +10,18 @@ use crate::Worker;
 
 pub struct Monitor {
     watcher: RecommendedWatcher,
-    watched_paths: HashSet<String>,
 }
 
-static WATCHER: OnceCell<Mutex<Monitor>> = OnceCell::new();
+static MONITOR: OnceCell<Mutex<Monitor>> = OnceCell::new();
 
 pub fn get_monitor() -> &'static Mutex<Monitor> {
-    WATCHER.get_or_init(|| {
+    MONITOR.get_or_init(|| {
         info!("初始化 WATCHER");
         let (tx, rx) = mpsc::channel();
         let mut watcher = notify::recommended_watcher(tx).unwrap();
-        let mut watched_paths = HashSet::new();
 
         Config::get_index_dir_paths().unwrap().iter().for_each(|path| {
             watcher.watch(Path::new(path), RecursiveMode::Recursive).unwrap();
-            watched_paths.insert(path.to_string());
         });
 
         thread::Builder::new()
@@ -58,42 +54,35 @@ pub fn get_monitor() -> &'static Mutex<Monitor> {
                 }
             }).unwrap();
 
-        Mutex::new(Monitor{watcher, watched_paths})
+        Mutex::new(Monitor{watcher})
     })
 }
 
-pub fn set_watched_paths(new_paths: Vec<String>) {
-    info!("设置新的监听路径: {:?}", new_paths);
-    let monitor_mutex = get_monitor().lock().unwrap();
-    let mut monitor = monitor_mutex;
+pub fn add_watched_path(new_path: &str) {
+    info!("设置新的监听路径: {:?}", new_path);
+    let mut monitor = get_monitor().lock().unwrap();
 
-    let old_paths = HashSet::from(monitor.watched_paths.clone());
-    let new_paths = HashSet::from_iter(new_paths);
-
-    // 移除旧的监听路径
-    for path in old_paths.difference(&new_paths) {
-        match monitor.watcher.unwatch(Path::new(path)) {
-            Ok(_) => {
-                monitor.watched_paths.remove(path);
-                info!("成功移除旧的监听路径: {}", path);
-            },
-            Err(e) => {
-                error!("移除旧的监听路径失败: {}, 错误: {:?}", path, e);
-            }
-        }
-    }
     // 添加新的监听路径
-    for path in new_paths.difference(&old_paths) {
-        match monitor.watcher.watch(Path::new(path), RecursiveMode::Recursive) {
-            Ok(_) => {
-                monitor.watched_paths.insert(path.to_string());
-                info!("成功添加新的监听路径: {}", path);
-            },
-            Err(e) => {
-                error!("添加新的监听路径失败: {}, 错误: {:?}", path, e);
-            }
+    match monitor.watcher.watch(Path::new(new_path), RecursiveMode::Recursive) {
+        Ok(_) => {
+            info!("成功添加新的监听路径: {}", new_path);
+        },
+        Err(e) => {
+            error!("添加新的监听路径失败: {}, 错误: {:?}", new_path, e);
         }
     }
+}
 
-    info!("监听路径重新设置完成，当前监听 {} 个路径", &monitor.watched_paths.len());
+pub fn del_watched_path(old_path: &str) {
+    info!("删除旧的监听路径: {:?}", old_path);
+    let mut monitor = get_monitor().lock().unwrap();
+
+    match monitor.watcher.unwatch(Path::new(old_path)) {
+        Ok(_) => {
+            info!("成功移除旧的监听路径: {}", old_path);
+        },
+        Err(e) => {
+            error!("移除旧的监听路径失败: {}, 错误: {:?}", old_path, e);
+        }
+    }
 }

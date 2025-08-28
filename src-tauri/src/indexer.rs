@@ -7,7 +7,7 @@ use std::path::{Path, MAIN_SEPARATOR};
 use rusqlite::Error as RusqliteError;
 
 use crate::reader::Item;
-use crate::sqlite::get_pool;
+use crate::sqlite::get_conn;
 
 #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
 pub struct SearchResultDirectory {
@@ -48,7 +48,7 @@ impl Indexer {
     }
 
     fn check_indexer_init() -> Result<()> {
-        let conn = get_pool()?;
+        let conn = get_conn()?;
         let row = conn
             .query_one("select version from indexer_version", [], |row| {
                 row.get::<_, String>(0)
@@ -65,7 +65,7 @@ impl Indexer {
     }
 
     fn reset_indexer() -> Result<()> {
-        let conn = get_pool()?;
+        let conn = get_conn()?;
         conn.execute_batch(
             r"
             DROP TABLE IF EXISTS directories;
@@ -122,7 +122,7 @@ impl Indexer {
         let dir_path = directory.to_str().unwrap();
         let modified_time = self.get_modified_time(directory)?;
 
-        let directory_id = get_pool()?.query_row(
+        let directory_id = get_conn()?.query_row(
             "INSERT INTO directories (name, path, modified_time) VALUES (?1, ?2, ?3) ON CONFLICT(path) DO UPDATE SET modified_time = ?3 RETURNING id",
             params![&dir_name, &dir_path, &modified_time],
             |row| row.get(0)
@@ -133,7 +133,7 @@ impl Indexer {
     pub fn get_directory(&self, directory: &Path) -> Result<SearchResultDirectory> {
         self.check_is_absolute(directory)?;
         let dir_path = directory.to_str().unwrap();
-        let conn = get_pool()?;
+        let conn = get_conn()?;
         let mut stmt =
             conn.prepare("SELECT name, path, modified_time FROM directories WHERE path = ?1")?;
         let row = stmt.query_row(params![dir_path], |row| {
@@ -150,7 +150,7 @@ impl Indexer {
         self.check_is_absolute(file)?;
         let file_path = file.parent().unwrap().to_str().unwrap();
         let file_name = file.file_name().unwrap().to_str().unwrap();
-        let conn = get_pool()?;
+        let conn = get_conn()?;
         let mut stmt = conn.prepare(
             r"SELECT files.name, directories.path, files.modified_time 
             FROM files
@@ -175,7 +175,7 @@ impl Indexer {
         let file_name = file.file_name().unwrap().to_str().unwrap();
         let modified_time = self.get_modified_time(&file)?;
 
-        let mut conn = get_pool()?;
+        let mut conn = get_conn()?;
         let tx = conn.transaction()?;
         let file_id: i64 = tx.query_row(
             "INSERT INTO files (directory_id, name, modified_time) VALUES (?1, ?2, ?3) ON CONFLICT(directory_id, name) DO UPDATE SET modified_time = ?3 RETURNING id",
@@ -221,7 +221,7 @@ impl Indexer {
         let mut files = Vec::new();
 
         let dir_path = directory.to_str().unwrap();
-        let conn = get_pool()?;
+        let conn = get_conn()?;
         let mut stmt = conn.prepare(
             "SELECT name, path, modified_time FROM directories WHERE path LIKE ?1 AND path NOT LIKE ?2",
         )?;
@@ -271,7 +271,7 @@ impl Indexer {
         limit: usize,
     ) -> Result<Vec<SearchResultDirectory>> {
         let mut result = Vec::new();
-        let conn = get_pool()?;
+        let conn = get_conn()?;
 
         let sql = format!(
             "SELECT name, path, modified_time FROM directories WHERE name LIKE '%{}%' ORDER BY id LIMIT {} OFFSET {}",
@@ -299,7 +299,7 @@ impl Indexer {
         limit: usize,
     ) -> Result<Vec<SearchResultFile>> {
         let mut result = Vec::new();
-        let conn = get_pool()?;
+        let conn = get_conn()?;
 
         let sql = format!(
             r"SELECT files.name, directories.path, files.modified_time
@@ -331,7 +331,7 @@ impl Indexer {
         limit: usize,
     ) -> Result<Vec<SearchResultItem>> {
         let mut result = Vec::new();
-        let conn = get_pool()?;
+        let conn = get_conn()?;
 
         let sql = format!(
             r"SELECT items.content, files.name, directories.path
@@ -360,7 +360,7 @@ impl Indexer {
         self.check_is_absolute(file)?;
         let file_name = file.file_name().unwrap().to_str().unwrap();
         let directory_path = file.parent().unwrap().to_str().unwrap();
-        let mut conn = get_pool()?;
+        let mut conn = get_conn()?;
         let tx = conn.transaction()?;
         let file_id: Result<i64, rusqlite::Error> = tx.query_row(
             "SELECT id FROM files WHERE name = ?1 and directory_id in (SELECT id FROM directories WHERE path = ?2)",
@@ -404,14 +404,14 @@ impl Indexer {
         }
 
         let dir_path = directory.to_str().unwrap();
-        let conn = get_pool()?;
+        let conn = get_conn()?;
         conn.execute("DELETE FROM directories WHERE path = ?1", params![dir_path])?;
 
         Ok(())
     }
 
     pub fn get_index_status(&self) -> Result<IndexStatusStat> {
-        let conn = get_pool()?;
+        let conn = get_conn()?;
         let total_directories: i64 = conn.query_one("SELECT COUNT(*) FROM directories", [], |row| row.get(0))?;
         let total_files: i64 = conn.query_one("SELECT COUNT(*) FROM files", [], |row| row.get(0))?;
         let indexed_files: i64 = conn.query_one("SELECT COUNT(*) FROM items", [], |row| row.get(0))?;

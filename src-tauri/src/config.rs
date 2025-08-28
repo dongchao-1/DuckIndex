@@ -1,8 +1,7 @@
 use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
 
-use crate::sqlite::get_pool;
-use crate::monitor::set_watched_paths;
+use crate::sqlite::get_conn;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Config {}
@@ -16,7 +15,7 @@ impl Config {
     }
 
     fn check_config_init() -> Result<()> {
-        let conn = get_pool()?;
+        let conn = get_conn()?;
         let row = conn
             .query_one("select version from config_version", [], |row| {
                 row.get::<_, String>(0)
@@ -33,7 +32,7 @@ impl Config {
     }
 
     fn reset_config() -> Result<()> {
-        let conn = get_pool()?;
+        let conn = get_conn()?;
         conn.execute_batch(
             r"
             DROP TABLE IF EXISTS config;
@@ -56,7 +55,7 @@ impl Config {
     }
 
     pub fn get_index_dir_paths() -> Result<Vec<String>> {
-        let conn = get_pool()?;
+        let conn = get_conn()?;
         let index_dir_paths: String = conn.query_one(
             "SELECT value FROM config WHERE key = 'index_dir_paths'",
             [],
@@ -67,14 +66,12 @@ impl Config {
     }
 
     pub fn set_index_dir_paths(index_dir_paths: Vec<String>) -> Result<()> {
-        let conn = get_pool()?;
+        let conn = get_conn()?;
         let index_dir_paths_str = serde_json::to_string(&index_dir_paths)?;
         conn.execute(
             "update config set value = $1 where key = 'index_dir_paths'",
             [index_dir_paths_str],
         )?;
-
-        set_watched_paths(index_dir_paths);
         
         Ok(())
     }
