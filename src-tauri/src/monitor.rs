@@ -34,7 +34,7 @@ pub fn get_monitor() -> &'static Mutex<Monitor> {
                             match event.kind {
                                 notify::EventKind::Create(_) | notify::EventKind::Modify(_) | notify::EventKind::Remove(_) => {
                                     for path in &event.paths {
-                                        debug!("文件被变更: {:?}, {:?}", event.kind, path);
+                                        debug!("文件被变更: {:?}, {}", event.kind, path.display());
                                         worker.submit_index_all_files(path).unwrap();
                                     }
                                 },
@@ -58,31 +58,31 @@ pub fn get_monitor() -> &'static Mutex<Monitor> {
     })
 }
 
-pub fn add_watched_path(new_path: &str) {
-    info!("设置新的监听路径: {:?}", new_path);
+pub fn add_watched_path(new_path: &Path) {
+    info!("设置新的监听路径: {}", new_path.display());
     let mut monitor = get_monitor().lock().unwrap();
 
     // 添加新的监听路径
-    match monitor.watcher.watch(Path::new(new_path), RecursiveMode::Recursive) {
+    match monitor.watcher.watch(new_path, RecursiveMode::Recursive) {
         Ok(_) => {
-            info!("成功添加新的监听路径: {}", new_path);
+            info!("成功添加新的监听路径: {}", new_path.display());
         },
         Err(e) => {
-            error!("添加新的监听路径失败: {}, 错误: {:?}", new_path, e);
+            error!("添加新的监听路径失败: {}, 错误: {:?}", new_path.display(), e);
         }
     }
 }
 
-pub fn del_watched_path(old_path: &str) {
-    info!("删除旧的监听路径: {:?}", old_path);
+pub fn del_watched_path(old_path: &Path) {
+    info!("删除旧的监听路径: {}", old_path.display());
     let mut monitor = get_monitor().lock().unwrap();
 
-    match monitor.watcher.unwatch(Path::new(old_path)) {
+    match monitor.watcher.unwatch(old_path) {
         Ok(_) => {
-            info!("成功移除旧的监听路径: {}", old_path);
+            info!("成功移除旧的监听路径: {}", old_path.display());
         },
         Err(e) => {
-            error!("移除旧的监听路径失败: {}, 错误: {:?}", old_path, e);
+            error!("移除旧的监听路径失败: {}, 错误: {:?}", old_path.display(), e);
         }
     }
 }

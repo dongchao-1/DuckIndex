@@ -56,7 +56,19 @@ pub fn init_logger() {
 
     let log_config = Config::builder()
         .appender(Appender::builder().build("appender", appender))
-        .build(Root::builder().appender("appender").build(level_filter))
+        // 为 lopdf 设置 error级别
+        .logger(
+            log4rs::config::Logger::builder()
+                .appender("appender")
+                .additive(false)
+                .build("lopdf", LevelFilter::Error)
+        )
+        // Root logger 为你的应用设置环境变量指定的级别
+        .build(
+            Root::builder()
+                .appender("appender")
+                .build(level_filter)
+        )
         .unwrap();
 
     log4rs::init_config(log_config).unwrap();

@@ -47,7 +47,6 @@ mod tests {
         let _env = TestEnv::new();
         let index_dir = get_index_dir();
         assert!(index_dir.exists());
-        // println!("Index directory: {:?}", index_dir);
     }
 
     #[test]
@@ -55,6 +54,5 @@ mod tests {
         let _env = TestEnv::new();
         let log_dir = get_log_dir();
         assert!(log_dir.exists());
-        // println!("Log directory: {:?}", log_dir);
     }
 }

@@ -64,11 +64,12 @@ fn add_index_path(path: &str) {
     paths.push(path.to_string());
     Config::set_index_dir_paths(paths).unwrap();
 
+    let new_path = Path::new(path);
     let worker = Worker::new().unwrap();
-    info!("开始索引目录: {}", path);
-    worker.submit_index_all_files(Path::new(&path)).unwrap();
+    info!("开始索引目录: {}", new_path.display());
+    worker.submit_index_all_files(&new_path).unwrap();
 
-    add_watched_path(&path);
+    add_watched_path(&new_path);
 }
 
 #[tauri::command]
@@ -77,11 +78,12 @@ fn del_index_path(path: &str) {
     paths.retain(|p| p != path);
     Config::set_index_dir_paths(paths).unwrap();
 
+    let old_path = Path::new(path);
     let indexer = Indexer::new().unwrap();
-    info!("开始删除目录: {}", path);
-    indexer.delete_directory(Path::new(&path)).unwrap();
+    info!("开始删除目录: {}", old_path.display());
+    indexer.delete_directory(&old_path).unwrap();
 
-    del_watched_path(path);
+    del_watched_path(&old_path);
 }
 
 #[tauri::command]

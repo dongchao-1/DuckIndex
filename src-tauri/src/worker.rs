@@ -343,7 +343,7 @@ impl Worker {
                                 },
                                 Err(e) => {
                                     self.indexer.write_file_items(path, Vec::new())?;
-                                    error!("处理任务失败: {}", e);
+                                    error!("索引任务失败: {} {}", path.display(), e);
                                     error!("{}", e.backtrace());
                                 }
                             }

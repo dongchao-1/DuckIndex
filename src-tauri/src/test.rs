@@ -59,7 +59,7 @@ pub mod test {
                 let test_env = TestEnv::new();
                 temp_path = test_env.temp_dir.path().to_path_buf();
 
-                println!("临时目录路径: {:?}", temp_path);
+                // println!("临时目录路径: {}", temp_path.display());
                 assert!(temp_path.exists(), "临时目录应该存在");
             }
 
@@ -74,7 +74,7 @@ pub mod test {
                 let test_env = TestEnv::new_with_cleanup(false);
                 temp_path = test_env.temp_dir.path().to_path_buf();
 
-                println!("临时目录路径: {:?}", temp_path);
+                // println!("临时目录路径: {:?}", temp_path.display());
                 assert!(temp_path.exists(), "临时目录应该存在");
             }
 
