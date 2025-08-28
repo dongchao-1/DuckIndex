@@ -33,6 +33,7 @@ impl CompositeReader {
             Arc::new(DocxReader),
             Arc::new(PdfReader),
             Arc::new(PptxReader),
+            Arc::new(XlsxReader),
         ];
         let mut reader_map: HashMap<String, Arc<dyn Reader>> = HashMap::new();
         for reader in readers {
@@ -249,6 +250,72 @@ impl PptxReader {
     }
 }
 
+struct XlsxReader;
+impl Reader for XlsxReader {
+    fn read(&self, file_path: &Path) -> Result<Vec<Item>> {
+        let temp_dir = TempDir::new()?;
+        let file = File::open(file_path)?;
+        let mut archive = ZipArchive::new(file)?;
+        archive.extract(&temp_dir)?;
+
+        let document_path = temp_dir.path().join("xl/sharedStrings.xml");
+        let mut items = vec![];
+
+        let reader = BufReader::new(File::open(document_path)?);
+        let mut xml_reader = quickXmlReader::from_reader(reader);
+        let mut buf = Vec::new();
+        let mut current_text = String::new();
+        let mut in_si = false;
+        let mut in_text = false;
+
+        loop {
+            match xml_reader.read_event_into(&mut buf)? {
+                quickXmlEvent::Start(e) => {
+                    match e.name().as_ref() {
+                        b"si" => {
+                            in_si = true;
+                            current_text.clear();
+                        }
+                        b"t" if in_si => {
+                            in_text = true;
+                        }
+                        _ => {}
+                    }
+                }
+                quickXmlEvent::Text(e) if in_text => {
+                    current_text.push_str(&e.decode()?);
+                }
+                quickXmlEvent::End(e) => {
+                    match e.name().as_ref() {
+                        b"si" => {
+                            if in_si && !current_text.trim().is_empty() {
+                                items.push(Item {
+                                    content: current_text.trim().to_string(),
+                                });
+                            }
+                            in_si = false;
+                            current_text.clear();
+                        }
+                        b"t" => {
+                            in_text = false;
+                        }
+                        _ => {}
+                    }
+                }
+                quickXmlEvent::Eof => break,
+                _ => {}
+            }
+            buf.clear();
+        }
+
+        Ok(items)
+    }
+
+    fn supports(&self) -> Vec<&str> {
+        vec!["xlsx"]
+    }
+}
+
 struct PdfReader;
 impl Reader for PdfReader {
     fn read(&self, file_path: &Path) -> Result<Vec<Item>> {
@@ -356,5 +423,16 @@ mod tests {
         let items = reader.read(&Path::new(TEST_DATA_DIR).join("test.pdf")).unwrap();
         // println!("Items: {:?}", items);
         assert_eq!(items.len(), 1);
+    }
+
+    #[test]
+    fn test_xlsx_reader() {
+        let reader = XlsxReader;
+        assert_eq!(reader.supports(), vec!["xlsx"]);
+        
+        let xlsx_path = Path::new(TEST_DATA_DIR).join("office/test.xlsx");
+        let items = reader.read(&xlsx_path).unwrap();
+        // println!("XLSX Items: {:?}", items);
+        assert_eq!(items.len(), 7);
     }
 }
