@@ -39,7 +39,7 @@ interface SearchType {
   title: string;
   invokeMethod: string;
   resultProcessor: (item: any) => any;
-  cardTitle: (item: any, index: number) => string;
+  cardTitle: (item: any) => string;
   cardMain: (item: any) => string;
   openParams: (item: any) => [string, string?];
 }
@@ -51,7 +51,7 @@ const searchTypes: SearchType[] = [
     title: '目录',
     invokeMethod: 'search_directory',
     resultProcessor: (item) => ({ name: item.name, path: item.path }),
-    cardTitle: (item, index) => `${index + 1}. ${item.name}`,
+    cardTitle: (item) => item.name,
     cardMain: (item) => item.path,
     openParams: (item) => [item.path]
   },
@@ -60,7 +60,7 @@ const searchTypes: SearchType[] = [
     title: '文件',
     invokeMethod: 'search_file',
     resultProcessor: (item) => ({ name: item.name, path: item.path }),
-    cardTitle: (item, index) => `${index + 1}. ${item.name}`,
+    cardTitle: (item) => item.name,
     cardMain: (item) => item.path,
     openParams: (item) => [item.path, item.name]
   },
@@ -72,7 +72,7 @@ const searchTypes: SearchType[] = [
       const fullPath = await join(item.path, item.file);
       return { content: item.content, file: item.file, path: item.path, fullPath };
     },
-    cardTitle: (item, index) => `${index + 1}. ${item.content}`,
+    cardTitle: (item) => item.content,
     cardMain: (item) => item.fullPath,
     openParams: (item) => [item.path, item.file]
   }
@@ -227,7 +227,15 @@ async function handleAddIndexPathClick() {
       <el-main class="flex-grow">
         <el-tabs :tab-position='"top"' class="demo-tabs" @tab-click="handleTabClick">
           <el-tab-pane label="搜索">
-            <el-input v-model="content" @input="search" size="default" placeholder="输入需要搜索的内容" />
+            <el-input 
+              v-model="content" 
+              @input="search" 
+              size="large" 
+              :autofocus="true" 
+              clearable 
+              placeholder="输入需要搜索的内容" 
+              class="search-input"
+            />
             <el-row>
               <el-col :span="8" v-for="searchType in searchTypes" :key="searchType.key">
                 <p>{{ searchType.title }}:</p>
@@ -238,11 +246,12 @@ async function handleAddIndexPathClick() {
                   v-loading="searchState[searchType.key].loading"
                   element-loading-text="搜索中..."
                 >
-                  <el-card v-for="(item, index) in searchState[searchType.key].results" :key="item.path || item.fullPath">
+                  <el-card v-for="(item, index) in searchState[searchType.key].results" :key="item.path || item.fullPath" shadow="never">
                     <template #header>
                       <div class="card-header">
-                        {{ searchType.cardTitle(item, index) }}
-                        <el-button type="primary" @click="openInExplorer(...searchType.openParams(item))">打开</el-button>
+                        <span class="card-index">{{ index + 1 }}.</span>
+                        <span class="card-title">{{ searchType.cardTitle(item) }}</span>
+                        <el-button type="primary" class="card-action-btn" @click="openInExplorer(...searchType.openParams(item))">打开</el-button>
                       </div>
                     </template>
                     <div class="card-main">{{ searchType.cardMain(item) }}</div>
@@ -277,15 +286,6 @@ async function handleAddIndexPathClick() {
       <el-footer>
         <el-row>
           <el-col :span="4">
-            <el-statistic title="索引目录" :value="directories" />
-          </el-col>
-          <el-col :span="4">
-            <el-statistic title="索引文件" :value="files" />
-          </el-col>
-          <el-col :span="4">
-            <el-statistic title="索引内容" :value="items" />
-          </el-col>
-          <el-col :span="4">
             <el-statistic title="待索引" :value="pending" />
           </el-col>
           <el-col :span="4">
@@ -298,6 +298,15 @@ async function handleAddIndexPathClick() {
             >
               <el-statistic title="索引中" :value="running" />
             </el-tooltip>
+          </el-col>
+          <el-col :span="4">
+            <el-statistic title="索引目录" :value="directories" />
+          </el-col>
+          <el-col :span="4">
+            <el-statistic title="索引文件" :value="files" />
+          </el-col>
+          <el-col :span="4">
+            <el-statistic title="索引内容" :value="items" />
           </el-col>
         </el-row>
       </el-footer>
@@ -322,10 +331,63 @@ async function handleAddIndexPathClick() {
 .card-main {
   font-size: 12px;
   color: #909399;
-  margin-top: 4px;
+  padding: 8px 12px;
+  word-break: break-all;
+  word-wrap: break-word;
+  white-space: normal;
+  line-height: 1.3;
+}
+
+.card-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 8px 12px;
+}
+
+.card-index {
+  color: #909399;
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.card-title {
+  flex: 1;
+  font-size: 14px;
+  line-height: 1.3;
+  word-break: break-all;
+  word-wrap: break-word;
+  white-space: normal;
+}
+
+.card-action-btn {
+  flex-shrink: 0;
+  margin-left: auto;
+  padding: 4px 8px;
+  font-size: 12px;
+  height: 24px;
 }
 
 .search-scrollbar {
   height: calc(95vh - 250px); /* 减去header、input、footer等占用的高度 */
+}
+
+/* 重写 el-card 的默认样式 */
+.search-scrollbar :deep(.el-card) {
+  margin-bottom: 8px;
+}
+
+.search-scrollbar :deep(.el-card__header) {
+  padding: 0;
+  border-bottom: 1px solid var(--el-border-color-light);
+}
+
+.search-scrollbar :deep(.el-card__body) {
+  padding: 0;
+}
+
+/* 搜索输入框居中样式 */
+.search-input :deep(.el-input__inner) {
+  text-align: center;
 }
 </style>
