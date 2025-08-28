@@ -33,6 +33,11 @@ mainWindow.listen("status-update", ({ payload }: { event: string; payload: any }
 // 搜索
 const content = ref("");
 
+// Loading 状态
+const directoryLoading = ref(false);
+const fileLoading = ref(false);
+const itemLoading = ref(false);
+
 async function search() {
   directoryResult.value = [];
   fileResult.value = [];
@@ -50,12 +55,18 @@ async function searchDirectory() {
     directoryResult.value = [];
     return;
   }
-  const offset = directoryResult.value.length;
-  const limit = 10;
-  console.log('Searching directory with query:', content.value, 'Offset:', offset, 'Limit:', limit);
-  const results: any[] = await invoke("search_directory", { query: content.value, offset: offset, limit: limit });
-  for (const item of results) {
-    directoryResult.value.push({ name: item.name , path: item.path });
+  
+  directoryLoading.value = true;
+  try {
+    const offset = directoryResult.value.length;
+    const limit = 10;
+    console.log('Searching directory with query:', content.value, 'Offset:', offset, 'Limit:', limit);
+    const results: any[] = await invoke("search_directory", { query: content.value, offset: offset, limit: limit });
+    for (const item of results) {
+      directoryResult.value.push({ name: item.name , path: item.path });
+    }
+  } finally {
+    directoryLoading.value = false;
   }
 }
 
@@ -72,12 +83,18 @@ async function searchFile() {
     fileResult.value = [];
     return;
   }
-  const offset = fileResult.value.length;
-  const limit = 10;
-  console.log('Searching file with query:', content.value, 'Offset:', offset, 'Limit:', limit);
-  const results: any[] = await invoke("search_file", { query: content.value, offset: offset, limit: limit });
-  for (const item of results) {
-    fileResult.value.push({ name: item.name , path: item.path });
+  
+  fileLoading.value = true;
+  try {
+    const offset = fileResult.value.length;
+    const limit = 10;
+    console.log('Searching file with query:', content.value, 'Offset:', offset, 'Limit:', limit);
+    const results: any[] = await invoke("search_file", { query: content.value, offset: offset, limit: limit });
+    for (const item of results) {
+      fileResult.value.push({ name: item.name , path: item.path });
+    }
+  } finally {
+    fileLoading.value = false;
   }
 }
 
@@ -95,15 +112,21 @@ async function searchItem() {
     itemResult.value = [];
     return;
   }
-  const offset = itemResult.value.length;
-  const limit = 10;
-  console.log('Searching item with query:', content.value, 'Offset:', offset, 'Limit:', limit);
-  const results: any[] = await invoke("search_item", { query: content.value, offset: offset, limit: limit });
-  for (const item of results) {
-    const fullPath = await join(item.path, item.file);
-    itemResult.value.push({ content: item.content, file: item.file , path: item.path, fullPath });
+  
+  itemLoading.value = true;
+  try {
+    const offset = itemResult.value.length;
+    const limit = 10;
+    console.log('Searching item with query:', content.value, 'Offset:', offset, 'Limit:', limit);
+    const results: any[] = await invoke("search_item", { query: content.value, offset: offset, limit: limit });
+    for (const item of results) {
+      const fullPath = await join(item.path, item.file);
+      itemResult.value.push({ content: item.content, file: item.file , path: item.path, fullPath });
+    }
+    // console.log('Item search results:', itemResult.value);
+  } finally {
+    itemLoading.value = false;
   }
-  // console.log('Item search results:', itemResult.value);
 }
 
 async function itemLoadMore(direction: ScrollbarDirection) {
@@ -197,7 +220,13 @@ async function handleAddIndexPathClick() {
             <el-row>
               <el-col :span="8">
                 <p>目录:</p>
-                <el-scrollbar class="search-scrollbar" @end-reached="directoryLoadMore" style="width: 90%">
+                <el-scrollbar 
+                  class="search-scrollbar" 
+                  @end-reached="directoryLoadMore" 
+                  style="width: 90%"
+                  v-loading="directoryLoading"
+                  element-loading-text="搜索中..."
+                >
                   <el-card v-for="(item, index) in directoryResult"  :key="item.path">
                     <template #header>
                       <div class="card-header">
@@ -211,7 +240,13 @@ async function handleAddIndexPathClick() {
               </el-col>
               <el-col :span="8">
                 <p>文件:</p>
-                <el-scrollbar class="search-scrollbar" @end-reached="fileLoadMore" style="width: 90%">
+                <el-scrollbar 
+                  class="search-scrollbar" 
+                  @end-reached="fileLoadMore" 
+                  style="width: 90%"
+                  v-loading="fileLoading"
+                  element-loading-text="搜索中..."
+                >
                   <el-card v-for="(item, index) in fileResult"  :key="item.path">
                     <template #header>
                       <div class="card-header">
@@ -225,7 +260,13 @@ async function handleAddIndexPathClick() {
               </el-col>
               <el-col :span="8">
                 <p>内容:</p>
-                <el-scrollbar class="search-scrollbar" @end-reached="itemLoadMore" style="width: 90%">
+                <el-scrollbar 
+                  class="search-scrollbar" 
+                  @end-reached="itemLoadMore" 
+                  style="width: 90%"
+                  v-loading="itemLoading"
+                  element-loading-text="搜索中..."
+                >
                   <el-card v-for="(item, index) in itemResult"  :key="item.path">
                     <template #header>
                       <div class="card-header">
@@ -322,5 +363,47 @@ async function handleAddIndexPathClick() {
 
 .search-scrollbar {
   height: calc(95vh - 250px); /* 减去header、input、footer等占用的高度 */
+}
+
+.loading-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  color: #409eff;
+}
+
+.loading-more {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px;
+  color: #409eff;
+  font-size: 14px;
+}
+
+.loading-spinner {
+  width: 20px;
+  height: 20px;
+  border: 2px solid #f3f3f3;
+  border-top: 2px solid #409eff;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin-right: 8px;
+}
+
+.loading-spinner-small {
+  width: 16px;
+  height: 16px;
+  border: 2px solid #f3f3f3;
+  border-top: 2px solid #409eff;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin-right: 6px;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
 }
 </style>
