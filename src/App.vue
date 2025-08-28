@@ -37,6 +37,7 @@ const content = ref("");
 const directoryLoading = ref(false);
 const fileLoading = ref(false);
 const itemLoading = ref(false);
+const configIndexPathLoading = ref(false);
 
 async function search() {
   directoryResult.value = [];
@@ -175,8 +176,13 @@ async function handleTabClick(pane: TabsPaneContext, _ev: Event) {
 
 async function handleDelIndexPathClick(path: string) {
   console.log('Delete index path clicked:', path);
-  await invoke("del_index_path", {path});
-  await refreshIndexPathTableData();
+  configIndexPathLoading.value = true;
+  try {
+    await invoke("del_index_path", {path});
+    await refreshIndexPathTableData();
+  } finally {
+    configIndexPathLoading.value = false;
+  }
   ElMessage({
     message: '目录删除成功',
     type: 'success',
@@ -189,18 +195,22 @@ async function handleAddIndexPathClick() {
       directory: true,
       multiple: false,
       title: '请选择一个目录',
-      // defaultPath: await homeDir(),
     });
 
     if (selected != null) {
       console.log("Selected directory:", selected);
-      const result = await invoke("add_index_path", { path: selected });
-      console.log("Indexing result:", result);
-      await refreshIndexPathTableData();
+      configIndexPathLoading.value = true;
+      try {
+        const result = await invoke("add_index_path", { path: selected });
+        console.log("Indexing result:", result);
+        await refreshIndexPathTableData();
+      } finally {
+        configIndexPathLoading.value = false;
+      }
       ElMessage({
         message: '目录添加成功',
         type: 'success',
-      })
+      });
     }
   } catch (error) {
     console.error('打开目录选择对话框失败:', error);
@@ -284,7 +294,12 @@ async function handleAddIndexPathClick() {
           <el-tab-pane label="设置">
             <el-text class="mx-1">索引路径</el-text>
             <el-button type="primary" @click="handleAddIndexPathClick">增加</el-button>
-            <el-table :data="tableData" style="width: 100%">
+            <el-table 
+              :data="tableData" 
+              style="width: 100%"
+              v-loading="configIndexPathLoading"
+              element-loading-text="加载索引路径中..."
+            >
               <el-table-column prop="path" label="路径"/>
               <el-table-column fixed="right" label="操作" width="100">
                 <template #default="{ row }">
