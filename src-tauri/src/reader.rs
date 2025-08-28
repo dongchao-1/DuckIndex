@@ -47,7 +47,33 @@ impl CompositeReader {
         })
     }
 
+    fn is_hidden(&self, path: &Path) -> Result<bool> {
+        #[cfg(target_os = "windows")]
+        {
+            use std::os::windows::fs::MetadataExt;
+            let metadata = path.metadata()?;
+            let attributes = metadata.file_attributes();
+            // FILE_ATTRIBUTE_HIDDEN 的值是 0x2
+            Ok((attributes & 0x2) > 0)
+        }
+
+        #[cfg(not(target_os = "windows"))]
+        {
+            if let Some(file_name) = path.file_name() {
+                if let Some(s) = file_name.to_str() {
+                    // 检查文件名是否以点开头
+                    return Ok(s.starts_with('.'));
+                }
+            }
+            Ok(false)
+        }
+    }
+
     pub fn supports(&self, file: &Path) -> Result<bool> {
+        if self.is_hidden(file)? {
+            return Ok(false);
+        }
+        
         if let Some(ext) = file.extension() {
             let ext_str = ext.to_str().unwrap().to_lowercase();
             return Ok(self.supports_ext.contains(&ext_str));

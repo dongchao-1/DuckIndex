@@ -27,7 +27,7 @@ pub fn init_logger() {
         level_filter = LevelFilter::Info;
     }
 
-    let trigger = SizeTrigger::new(128 * 1024 * 1024);
+    let trigger = SizeTrigger::new(64 * 1024 * 1024);
     let roller = FixedWindowRoller::builder()
         .build(
             get_log_dir().join("deepindex_{}.log.gz").to_str().unwrap(),

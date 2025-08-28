@@ -341,16 +341,31 @@ impl Worker {
 
         match task {
             Ok((id, task_type, path)) => {
-                match self.do_task(id, task_type, path) {
-                    Ok(_) => {
-                        conn.execute("delete from tasks where id = ?", params![id])?;
+                debug!("处理任务: {:?}", (&id, &task_type, &path));
+                let path = Path::new(&path);
+                let task_type = TaskType::from_str(&task_type).unwrap();
+                match task_type {
+                    TaskType::DIRECTORY => {
+                        if path.is_dir() {
+                            self.indexer.write_directory(path)?;
+                        }
                     }
-                    Err(e) => {
-                        error!("处理任务失败: {}", e);
-                        error!("{}", e.backtrace());
-                        conn.execute("update tasks set status = ? where id = ?", params![TaskStatus::FAILED.to_string(), id])?;
+                    TaskType::FILE => {
+                        if path.is_file() {
+                            match self.reader.read(path) {
+                                Ok(items) => {
+                                    self.indexer.write_file_items(path, items)?;
+                                },
+                                Err(e) => {
+                                    self.indexer.write_file_items(path, Vec::new())?;
+                                    error!("处理任务失败: {}", e);
+                                    error!("{}", e.backtrace());
+                                }
+                            }
+                        }
                     }
                 }
+                conn.execute("delete from tasks where id = ?", params![id])?;
             }
             Err(rusqlite::Error::QueryReturnedNoRows) => {
                 // 没有待处理的任务，休息1s
@@ -359,32 +374,6 @@ impl Worker {
             }
             Err(e) => {
                 return Err(anyhow!("获取任务失败: {}", e));
-            }
-        }
-        Ok(())
-    }
-
-    fn do_task(&self, id: i64, task_type: String, path: String) -> Result<()> {
-        debug!("处理任务: {:?}", (&id, &task_type, &path));
-        let path = Path::new(&path);
-        let task_type = TaskType::from_str(&task_type).unwrap();
-        match task_type {
-            TaskType::DIRECTORY => {
-                if path.is_dir() {
-                    self.indexer.write_directory(path)?;
-                }
-            }
-            TaskType::FILE => {
-                if path.is_file() {
-                    match self.reader.read(path) {
-                        Ok(items) => {
-                            self.indexer.write_file_items(path, items)?;
-                        },
-                        Err(e) => {
-                            return Err(anyhow!("读取文件失败: {} 错误: {}", path.display(), e));
-                        }
-                    }
-                }
             }
         }
         Ok(())
