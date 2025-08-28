@@ -33,107 +33,108 @@ mainWindow.listen("status-update", ({ payload }: { event: string; payload: any }
 // 搜索
 const content = ref("");
 
-// Loading 状态
-const directoryLoading = ref(false);
-const fileLoading = ref(false);
-const itemLoading = ref(false);
+// 搜索类型定义
+interface SearchType {
+  key: 'directory' | 'file' | 'item';
+  title: string;
+  invokeMethod: string;
+  resultProcessor: (item: any) => any;
+  cardTitle: (item: any, index: number) => string;
+  cardMain: (item: any) => string;
+  openParams: (item: any) => [string, string?];
+}
+
+// 搜索配置
+const searchTypes: SearchType[] = [
+  {
+    key: 'directory',
+    title: '目录',
+    invokeMethod: 'search_directory',
+    resultProcessor: (item) => ({ name: item.name, path: item.path }),
+    cardTitle: (item, index) => `${index + 1}. ${item.name}`,
+    cardMain: (item) => item.path,
+    openParams: (item) => [item.path]
+  },
+  {
+    key: 'file',
+    title: '文件',
+    invokeMethod: 'search_file',
+    resultProcessor: (item) => ({ name: item.name, path: item.path }),
+    cardTitle: (item, index) => `${index + 1}. ${item.name}`,
+    cardMain: (item) => item.path,
+    openParams: (item) => [item.path, item.name]
+  },
+  {
+    key: 'item',
+    title: '内容',
+    invokeMethod: 'search_item',
+    resultProcessor: async (item) => {
+      const fullPath = await join(item.path, item.file);
+      return { content: item.content, file: item.file, path: item.path, fullPath };
+    },
+    cardTitle: (item, index) => `${index + 1}. ${item.content}`,
+    cardMain: (item) => item.fullPath,
+    openParams: (item) => [item.path, item.file]
+  }
+];
+
+// 统一的搜索状态管理
+const searchState = ref<Record<string, { loading: boolean; results: any[] }>>({
+  directory: { loading: false, results: [] },
+  file: { loading: false, results: [] },
+  item: { loading: false, results: [] }
+});
+
 const configIndexPathLoading = ref(false);
 
+// 统一搜索函数
 async function search() {
-  directoryResult.value = [];
-  fileResult.value = [];
-  itemResult.value = [];
-  await searchDirectory();
-  await searchFile();
-  await searchItem();
+  // 清空所有结果
+  Object.keys(searchState.value).forEach(key => {
+    searchState.value[key].results = [];
+  });
+  
+  // 并行执行所有搜索
+  await Promise.all(searchTypes.map(type => performSearch(type)));
 }
 
-// 搜索结果更新
-const directoryResult = ref<any[]>([]);
-
-async function searchDirectory() {
+// 执行具体搜索
+async function performSearch(searchType: SearchType) {
+  const { key, invokeMethod, resultProcessor } = searchType;
+  
   if (!content.value.trim()) {
-    directoryResult.value = [];
+    searchState.value[key].results = [];
     return;
   }
   
-  directoryLoading.value = true;
+  searchState.value[key].loading = true;
   try {
-    const offset = directoryResult.value.length;
+    const offset = searchState.value[key].results.length;
     const limit = 10;
-    console.log('Searching directory with query:', content.value, 'Offset:', offset, 'Limit:', limit);
-    const results: any[] = await invoke("search_directory", { query: content.value, offset: offset, limit: limit });
+    console.log(`Searching ${key} with query:`, content.value, 'Offset:', offset, 'Limit:', limit);
+    
+    const results: any[] = await invoke(invokeMethod, { 
+      query: content.value, 
+      offset: offset, 
+      limit: limit 
+    });
+    
     for (const item of results) {
-      directoryResult.value.push({ name: item.name , path: item.path });
+      const processedItem = await resultProcessor(item);
+      searchState.value[key].results.push(processedItem);
     }
   } finally {
-    directoryLoading.value = false;
+    searchState.value[key].loading = false;
   }
 }
 
-async function directoryLoadMore(direction: ScrollbarDirection) {
-  if (direction === 'bottom') {
-    await searchDirectory();
-  }
-}
-
-const fileResult = ref<any[]>([]);
-
-async function searchFile() {
-  if (!content.value.trim()) {
-    fileResult.value = [];
-    return;
-  }
-  
-  fileLoading.value = true;
-  try {
-    const offset = fileResult.value.length;
-    const limit = 10;
-    console.log('Searching file with query:', content.value, 'Offset:', offset, 'Limit:', limit);
-    const results: any[] = await invoke("search_file", { query: content.value, offset: offset, limit: limit });
-    for (const item of results) {
-      fileResult.value.push({ name: item.name , path: item.path });
+// 统一的加载更多函数
+function createLoadMoreHandler(searchType: SearchType) {
+  return async (direction: ScrollbarDirection) => {
+    if (direction === 'bottom') {
+      await performSearch(searchType);
     }
-  } finally {
-    fileLoading.value = false;
-  }
-}
-
-async function fileLoadMore(direction: ScrollbarDirection) {
-  if (direction === 'bottom') {
-    await searchFile();
-  }
-}
-
-
-const itemResult = ref<any[]>([]);
-
-async function searchItem() {
-  if (!content.value.trim()) {
-    itemResult.value = [];
-    return;
-  }
-  
-  itemLoading.value = true;
-  try {
-    const offset = itemResult.value.length;
-    const limit = 10;
-    console.log('Searching item with query:', content.value, 'Offset:', offset, 'Limit:', limit);
-    const results: any[] = await invoke("search_item", { query: content.value, offset: offset, limit: limit });
-    for (const item of results) {
-      const fullPath = await join(item.path, item.file);
-      itemResult.value.push({ content: item.content, file: item.file , path: item.path, fullPath });
-    }
-    // console.log('Item search results:', itemResult.value);
-  } finally {
-    itemLoading.value = false;
-  }
-}
-
-async function itemLoadMore(direction: ScrollbarDirection) {
-  if (direction === 'bottom') {
-    await searchItem();
-  }
+  };
 }
 
 
@@ -228,63 +229,23 @@ async function handleAddIndexPathClick() {
           <el-tab-pane label="搜索">
             <el-input v-model="content" @input="search" size="default" placeholder="输入需要搜索的内容" />
             <el-row>
-              <el-col :span="8">
-                <p>目录:</p>
+              <el-col :span="8" v-for="searchType in searchTypes" :key="searchType.key">
+                <p>{{ searchType.title }}:</p>
                 <el-scrollbar 
                   class="search-scrollbar" 
-                  @end-reached="directoryLoadMore" 
+                  @end-reached="createLoadMoreHandler(searchType)" 
                   style="width: 90%"
-                  v-loading="directoryLoading"
+                  v-loading="searchState[searchType.key].loading"
                   element-loading-text="搜索中..."
                 >
-                  <el-card v-for="(item, index) in directoryResult"  :key="item.path">
+                  <el-card v-for="(item, index) in searchState[searchType.key].results" :key="item.path || item.fullPath">
                     <template #header>
                       <div class="card-header">
-                        {{ index + 1 }}. {{ item.name }}
-                        <el-button type="primary" @click="openInExplorer(item.path)">打开</el-button>
+                        {{ searchType.cardTitle(item, index) }}
+                        <el-button type="primary" @click="openInExplorer(...searchType.openParams(item))">打开</el-button>
                       </div>
                     </template>
-                    <div class="card-main">{{ item.path }}</div>
-                  </el-card>
-                </el-scrollbar>
-              </el-col>
-              <el-col :span="8">
-                <p>文件:</p>
-                <el-scrollbar 
-                  class="search-scrollbar" 
-                  @end-reached="fileLoadMore" 
-                  style="width: 90%"
-                  v-loading="fileLoading"
-                  element-loading-text="搜索中..."
-                >
-                  <el-card v-for="(item, index) in fileResult"  :key="item.path">
-                    <template #header>
-                      <div class="card-header">
-                        {{ index + 1 }}. {{ item.name }}
-                        <el-button type="primary" @click="openInExplorer( item.path, item.name)">打开</el-button>
-                      </div>
-                    </template>
-                    <div class="card-main">{{ item.path }}</div>
-                  </el-card>
-                </el-scrollbar>
-              </el-col>
-              <el-col :span="8">
-                <p>内容:</p>
-                <el-scrollbar 
-                  class="search-scrollbar" 
-                  @end-reached="itemLoadMore" 
-                  style="width: 90%"
-                  v-loading="itemLoading"
-                  element-loading-text="搜索中..."
-                >
-                  <el-card v-for="(item, index) in itemResult"  :key="item.path">
-                    <template #header>
-                      <div class="card-header">
-                        {{ index + 1 }}. {{ item.content }}
-                        <el-button type="primary" @click="openInExplorer( item.path, item.file)">打开</el-button>
-                      </div>
-                    </template>
-                    <div class="card-main">{{ item.fullPath }}</div>
+                    <div class="card-main">{{ searchType.cardMain(item) }}</div>
                   </el-card>
                 </el-scrollbar>
               </el-col>
@@ -358,18 +319,6 @@ async function handleAddIndexPathClick() {
   flex: 1;
 }
 
-.scrollbar-demo-item {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 50px;
-  margin: 10px;
-  text-align: center;
-  border-radius: 4px;
-  background: var(--el-color-primary-light-9);
-  color: var(--el-color-primary);
-}
-
 .card-main {
   font-size: 12px;
   color: #909399;
@@ -378,47 +327,5 @@ async function handleAddIndexPathClick() {
 
 .search-scrollbar {
   height: calc(95vh - 250px); /* 减去header、input、footer等占用的高度 */
-}
-
-.loading-container {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 20px;
-  color: #409eff;
-}
-
-.loading-more {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 10px;
-  color: #409eff;
-  font-size: 14px;
-}
-
-.loading-spinner {
-  width: 20px;
-  height: 20px;
-  border: 2px solid #f3f3f3;
-  border-top: 2px solid #409eff;
-  border-radius: 50%;
-  animation: spin 1s linear infinite;
-  margin-right: 8px;
-}
-
-.loading-spinner-small {
-  width: 16px;
-  height: 16px;
-  border: 2px solid #f3f3f3;
-  border-top: 2px solid #409eff;
-  border-radius: 50%;
-  animation: spin 1s linear infinite;
-  margin-right: 6px;
-}
-
-@keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
 }
 </style>
