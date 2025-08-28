@@ -15,9 +15,7 @@ console.log('Main window:', mainWindow);
 // 统计状态更新
 const pending = ref(0);
 const running = ref(0);
-const failed = ref(0);
 const running_tasks = ref("");
-const failed_tasks = ref("");
 const directories = ref(0);
 const files = ref(0);
 const items = ref(0);
@@ -25,9 +23,7 @@ const items = ref(0);
 mainWindow.listen("status-update", ({ payload }: { event: string; payload: any }) => {
   pending.value = payload.task_status_stat.pending;
   running.value = payload.task_status_stat.running;
-  failed.value = payload.task_status_stat.failed;
   running_tasks.value = payload.task_status_stat.running_tasks.join('<br>');
-  failed_tasks.value = payload.task_status_stat.failed_tasks.join('<br>');
 
   directories.value = payload.index_status_stat.directories;
   files.value = payload.index_status_stat.files;
@@ -286,18 +282,6 @@ async function handleAddIndexPathClick() {
               <el-statistic title="索引中" :value="running" />
             </el-tooltip>
           </el-col>
-          <el-col :span="4">
-            <el-tooltip
-              class="box-item"
-              effect="dark"
-              :content="failed_tasks"
-              placement="top"
-              :raw-content="true"
-            >
-              <el-statistic title="索引失败" :value="failed" />
-            </el-tooltip>
-          </el-col>
-
         </el-row>
       </el-footer>
 

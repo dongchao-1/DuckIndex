@@ -38,18 +38,13 @@ enum TaskStatus {
     PENDING,
     #[strum(to_string = "RUNNING")]
     RUNNING,
-    #[strum(to_string = "FAILED")]
-    FAILED,
 }
 
 #[derive(Debug, Clone, Serialize)]
 pub struct TaskStatusStat {
     pub pending: usize,
     pub running: usize,
-    pub failed: usize,
-    pub running_tasks: Vec<String>,
-    pub failed_tasks: Vec<String>,
-}
+    pub running_tasks: Vec<String>,}
 
 impl Worker {
     pub fn check_or_init() -> Result<()> {
@@ -260,11 +255,10 @@ impl Worker {
 
     pub fn get_tasks_status(&self) -> Result<TaskStatusStat> {
         let conn = get_conn()?;
-        let (pending, running, failed) = conn.query_one("SELECT COUNT(if(status = ?1, 1, NULL)), COUNT(if(status = ?2, 1, NULL)), COUNT(if(status = ?3, 1, NULL)) FROM tasks", 
-            params![TaskStatus::PENDING.to_string(), TaskStatus::RUNNING.to_string(), TaskStatus::FAILED.to_string()], 
-            |row| {
-                Ok((row.get(0)?, row.get(1)?, row.get(2)?))
-            }).unwrap_or((0, 0, 0));
+        let (pending, running) = conn.query_one("SELECT COUNT(if(status = ?1, 1, NULL)), COUNT(if(status = ?2, 1, NULL)) FROM tasks", 
+            params![TaskStatus::PENDING.to_string(), TaskStatus::RUNNING.to_string()], |row| {
+                Ok((row.get(0)?, row.get(1)?))
+            }).unwrap_or((0, 0));
 
         let mut stmt = conn.prepare("SELECT path FROM tasks WHERE status = ?1")?;
         let paths = stmt.query_map(params![TaskStatus::RUNNING.to_string()], |row| {
@@ -275,19 +269,10 @@ impl Worker {
             running_tasks.push(path?);
         }
 
-        let paths = stmt.query_map(params![TaskStatus::FAILED.to_string()], |row| {
-            Ok(row.get::<_, String>(0)?)
-        })?;
-        let mut failed_tasks = Vec::new();
-        for path in paths {
-            failed_tasks.push(path?);
-        }
         Ok(TaskStatusStat {
             pending,
             running,
-            failed,
             running_tasks,
-            failed_tasks,
         })
     }
 
@@ -600,9 +585,7 @@ mod tests {
         let status = worker.get_tasks_status().unwrap();
         assert_eq!(status.pending, 4);
         assert_eq!(status.running, 0);
-        assert_eq!(status.failed, 0);
         assert_eq!(status.running_tasks, Vec::<String>::new());
-        assert_eq!(status.failed_tasks, Vec::<String>::new());
     }
 
     #[test]
@@ -616,17 +599,13 @@ mod tests {
         let status = worker.get_tasks_status().unwrap();
         assert_eq!(status.pending, 4);
         assert_eq!(status.running, 0);
-        assert_eq!(status.failed, 0);
         assert_eq!(status.running_tasks, Vec::<String>::new());
-        assert_eq!(status.failed_tasks, Vec::<String>::new());
 
         let _ = worker.process_task().unwrap();
         let status = worker.get_tasks_status().unwrap();
         assert_eq!(status.pending, 3);
         assert_eq!(status.running, 0);
-        assert_eq!(status.failed, 0);
         assert_eq!(status.running_tasks, Vec::<String>::new());
-        assert_eq!(status.failed_tasks, Vec::<String>::new());
 
         for _ in 0..3 {
             let _ = worker.process_task().unwrap();
@@ -634,16 +613,12 @@ mod tests {
         let status = worker.get_tasks_status().unwrap();
         assert_eq!(status.pending, 0);
         assert_eq!(status.running, 0);
-        assert_eq!(status.failed, 0);
         assert_eq!(status.running_tasks, Vec::<String>::new());
-        assert_eq!(status.failed_tasks, Vec::<String>::new());
 
         let _ = worker.process_task();
         let status = worker.get_tasks_status().unwrap();
         assert_eq!(status.pending, 0);
         assert_eq!(status.running, 0);
-        assert_eq!(status.failed, 0);
         assert_eq!(status.running_tasks, Vec::<String>::new());
-        assert_eq!(status.failed_tasks, Vec::<String>::new());
     }
 }
