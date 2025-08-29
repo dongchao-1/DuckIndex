@@ -33,8 +33,6 @@ $env:RUST_BACKTRACE = "1"; $env:DEEPINDEX_LOG_LEVEL = "info"; pnpm tauri dev
 ### 4. 运行测试（包含OCR测试）
 ```powershell
 # 设置环境变量和PATH
-# $env:PATH = "C:\Users\dongchao\Code\vcpkg\installed\x64-windows\bin;$env:PATH"
-
 $env:RUSTFLAGS = "-Ctarget-feature=+crt-static"
 $env:TESSERACT_BIN_PATH = "C:\Users\dongchao\Code\vcpkg\installed\x64-windows\bin"
 $env:LEPTONICA_INCLUDE_PATH = "C:\Users\dongchao\Code\vcpkg\installed\x64-windows\include"

@@ -51,14 +51,12 @@ jobs:
         with:
           path: |
             vcpkg/installed/x64-windows/
-          key: ${{ runner.os }}-vcpkg-tesseract-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}-x64-windows
-          restore-keys: |
-            ${{ runner.os }}-vcpkg-tesseract-
+          key: ${{ runner.os }}-vcpkg-tesseract-20250829-x64-windows
 
       # 运行 vcpkg 安装 tesseract 及其依赖
       - name: Install tesseract with vcpkg
         run: |
-          if (!(Test-Path "vcpkg/installed/x64-windows/include/tesseract")) {
+          if (!(Test-Path "vcpkg/installed/x64-windows")) {
             vcpkg install tesseract:x64-windows
           } else {
             Write-Host "tesseract already installed, skipping"
