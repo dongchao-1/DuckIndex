@@ -32,7 +32,7 @@ jobs:
 
       # 安装 LLVM (包含 libclang)
       - name: Install LLVM
-        uses: KyleMayes/install-llvm-action@v1
+        uses: KyleMayes/install-llvm-action@v2
         with:
           version: "20.1.4"
           directory: ${{ github.workspace }}/llvm
