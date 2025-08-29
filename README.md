@@ -9,8 +9,10 @@ This template should help get you started developing with Vue 3 and TypeScript i
 ## setup
 pnpm install
 $env:RUST_BACKTRACE = "1"; $env:DEEPINDEX_LOG_LEVEL = "info"; pnpm tauri dev
-
 $env:RUST_BACKTRACE = "1"; $env:DEEPINDEX_LOG_LEVEL = "info"; cargo nextest run --manifest-path .\src-tauri\Cargo.toml
+
+# 构建生产版本
+pnpm tauri build
 
 
 C:\Users\dongchao\AppData\Local\Temp
@@ -47,3 +49,5 @@ $env:LEPTONICA_INCLUDE_PATH = "C:\Program Files\Tesseract-OCR"; $env:LEPTONICA_L
 
 
 SET VCPKG_DEFAULT_TRIPLET=x64-windows; .\vcpkg install leptonica
+
+SET RUSTFLAGS=-Ctarget-feature=+crt-static; cargo test --package deepindex --lib -- ocr::tests::test_ocr --exact --show-output

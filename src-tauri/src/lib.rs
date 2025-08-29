@@ -32,7 +32,6 @@ mod sqlite;
 mod test;
 mod worker;
 mod monitor;
-mod ocr;
 
 #[derive(Debug, Clone, Serialize)]
 struct TotalStatus {
