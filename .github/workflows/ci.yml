@@ -1,0 +1,42 @@
+name: Build on Windows
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      # 设置和缓存 vcpkg，这一步会下载 vcpkg 并缓存依赖
+      - name: Setup vcpkg and cache
+        uses: lukka/run-vcpkg@v11
+        with:
+          # 使用一个固定的 Git commit ID，确保构建的可重复性
+          vcpkgGitCommitId: '9001b97a2e5264b38d386d5d54a938c353f09f02'
+          runVcpkgInstall: false
+
+      # 运行 vcpkg 安装 tesseract 及其依赖
+      - name: Install tesseract with vcpkg
+        run: |
+          vcpkg install tesseract:x64-windows
+        env:
+          VCPKG_ROOT: ${{ github.workspace }}/vcpkg # 设置 vcpkg 根目录环境变量
+
+      # 编译你的 Rust 项目
+      - name: Build project
+        run: |
+          cargo build --release
+        env:
+          VCPKG_ROOT: ${{ github.workspace }}/vcpkg
+          # 告诉 Cargo 如何找到 vcpkg 工具链文件
+          VCPKG_TOOLCHAIN_FILE: ${{ github.workspace }}\vcpkg\scripts\buildsystems\vcpkg.cmake
