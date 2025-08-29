@@ -34,7 +34,7 @@ jobs:
       - name: Install LLVM
         uses: KyleMayes/install-llvm-action@v1
         with:
-          version: "21.1"
+          version: "20"
           directory: ${{ runner.temp }}/llvm
 
       # 设置和缓存 vcpkg，这一步会下载 vcpkg 并缓存依赖
