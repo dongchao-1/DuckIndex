@@ -10,6 +10,7 @@ use std::sync::Arc;
 use std::{fs, vec};
 use tempfile::TempDir;
 use zip::ZipArchive;
+use tesseract::Tesseract;
 
 #[derive(Debug)]
 pub struct Item {
@@ -34,6 +35,7 @@ impl CompositeReader {
             Arc::new(PdfReader),
             Arc::new(PptxReader),
             Arc::new(XlsxReader),
+            Arc::new(OcrReader),
         ];
         let mut reader_map: HashMap<String, Arc<dyn Reader>> = HashMap::new();
         for reader in readers {
@@ -336,6 +338,26 @@ impl Reader for PdfReader {
     }
 }
 
+struct OcrReader;
+impl Reader for OcrReader {
+    fn read(&self, file_path: &Path) -> Result<Vec<Item>> {
+        // TODO https://github.com/antimatter15/tesseract-rs/issues/39
+        let tess = Tesseract::new(Some("./tessdata"), Some("eng+chi_sim")).unwrap();
+        let text = tess.set_image(file_path.to_str().unwrap()).unwrap().get_text().unwrap();
+        let items = text.split("\n")
+            .filter(|line| !line.trim().is_empty())
+            .map(|line| Item { content: line.to_string() })
+            .collect();
+        Ok(items)
+    }
+
+    fn supports(&self) -> Vec<&str> {
+        vec!["jpg", "jpeg", "png", "tif", "tiff", "gif", "webp"]
+    }
+}
+
+
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -406,4 +428,34 @@ mod tests {
         // println!("XLSX Items: {:?}", items);
         assert_eq!(items.len(), 7);
     }
+
+
+    #[test]
+    fn test_ocr_reader() {
+        const TEST_DATA_PIC_DIR: &str = "../test_data/reader/pic";
+
+        let reader = OcrReader;
+        assert_eq!(reader.supports(), vec!["jpg", "jpeg", "png", "tif", "tiff", "gif", "webp"]);
+
+        let items = reader.read(&Path::new(TEST_DATA_PIC_DIR).join("test.jpg")).unwrap();
+        // println!("OCR Items: {:?}", items);
+        assert_eq!(items.len(), 6);
+        let items = reader.read(&Path::new(TEST_DATA_PIC_DIR).join("test.jpeg")).unwrap();
+        assert_eq!(items.len(), 6);
+
+        let items = reader.read(&Path::new(TEST_DATA_PIC_DIR).join("test.png")).unwrap();
+        assert_eq!(items.len(), 6);
+
+        let items = reader.read(&Path::new(TEST_DATA_PIC_DIR).join("test.tif")).unwrap();
+        assert_eq!(items.len(), 6);
+        let items = reader.read(&Path::new(TEST_DATA_PIC_DIR).join("test.tiff")).unwrap();
+        assert_eq!(items.len(), 6);
+
+        let items = reader.read(&Path::new(TEST_DATA_PIC_DIR).join("test.gif")).unwrap();
+        assert_eq!(items.len(), 6);
+
+        let items = reader.read(&Path::new(TEST_DATA_PIC_DIR).join("test.webp")).unwrap();
+        assert_eq!(items.len(), 6);
+    }
+
 }
