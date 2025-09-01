@@ -52,4 +52,3 @@ pnpm tauri build
 
 - 临时目录: `C:\Users\dongchao\AppData\Local\Temp`
 - 应用数据: `C:\Users\dongchao\AppData\Roaming\DeepIndex\data`
-Get-Content C:\Users\dongchao\AppData\Roaming\DeepIndex\data\log\deepindex.log -Tail 1 -Wait -Encoding UTF8

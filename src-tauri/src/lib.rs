@@ -140,7 +140,6 @@ pub fn setup_backend() {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    info!("DeepIndex启动");
     setup_backend();
 
     info!("开始检查已有目录");

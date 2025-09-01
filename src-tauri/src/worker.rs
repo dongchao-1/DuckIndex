@@ -4,6 +4,7 @@ use chrono::Local;
 use log::debug;
 use log::error;
 use log::info;
+use once_cell::sync::OnceCell;
 use rusqlite::params;
 use serde::Serialize;
 use std::collections::HashSet;
@@ -11,6 +12,7 @@ use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
 use std::str::FromStr;
+use std::sync::Mutex;
 use std::thread;
 use std::time::Duration;
 use strum::Display;
@@ -20,9 +22,16 @@ use crate::indexer::Indexer;
 use crate::reader::CompositeReader;
 use crate::sqlite::get_conn;
 
+static WORKER_LOCK: OnceCell<Mutex<()>> = OnceCell::new();
+
+fn get_worker_lock() -> &'static Mutex<()> {
+    WORKER_LOCK.get_or_init(|| Mutex::new(()))
+}
+
 pub struct Worker {
     indexer: Indexer,
     reader: CompositeReader,
+    name: String,
 }
 
 #[derive(Debug, PartialEq, EnumString, Display)]
@@ -45,7 +54,8 @@ enum TaskStatus {
 pub struct TaskStatusStat {
     pub pending: usize,
     pub running: usize,
-    pub running_tasks: Vec<String>,}
+    pub running_tasks: Vec<String>,
+}
 
 impl Worker {
     pub fn check_or_init() -> Result<()> {
@@ -82,10 +92,12 @@ impl Worker {
                 type TEXT NOT NULL,
                 path TEXT NOT NULL,
                 status TEXT NOT NULL,
+                worker TEXT,
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL,
                 UNIQUE (type, path)
             );
+            CREATE INDEX idx_tasks_status ON tasks (status);
             DROP TABLE IF EXISTS worker_version;
             CREATE TABLE worker_version (
                 version TEXT
@@ -99,7 +111,7 @@ impl Worker {
     pub fn reset_running_tasks() -> Result<()> {
         let conn = get_conn()?;
         conn.execute(
-            "UPDATE tasks SET status = ?1, updated_at = ?2 WHERE status = ?3",
+            "UPDATE tasks SET status = ?1, updated_at = ?2, worker = null WHERE status = ?3",
             params![
                 TaskStatus::PENDING.to_string(),
                 Local::now().to_rfc3339(),
@@ -112,7 +124,8 @@ impl Worker {
     pub fn new() -> Result<Worker> {
         let indexer = Indexer::new()?;
         let reader = CompositeReader::new()?;
-        Ok(Worker { indexer, reader })
+        let name = thread::current().name().unwrap_or("unknown").to_string();
+        Ok(Worker { indexer, reader, name })
     }
 
     fn add_task(&self, task_type: &TaskType, path: &Path) -> Result<i64> {
@@ -122,7 +135,7 @@ impl Worker {
         let now = Local::now().to_rfc3339();
         let id = conn.query_one(
             r"INSERT INTO tasks (type, path, status, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5) ON CONFLICT(type, path) 
-                DO UPDATE SET status = ?3, updated_at = ?5 RETURNING id",
+                DO UPDATE SET updated_at = ?5 RETURNING id",
             params![
                 task_type.to_string(),
                 path,
@@ -301,33 +314,40 @@ impl Worker {
     }
 
     pub fn process_task(&self) -> Result<()> {
-        let conn = get_conn()?;
-        let task = conn.query_row(
-            r"UPDATE tasks
-            SET status = ?1, updated_at = ?2
-            WHERE id = (
-                SELECT id FROM tasks
-                WHERE status = ?3
-                ORDER BY id
-                LIMIT 1
+
+        let task = {
+            let conn = get_conn()?;
+            let _lock = get_worker_lock().lock()
+                .map_err(|e| anyhow!("获取worker锁失败: {}", e))?;
+
+            conn.query_row(
+                r"UPDATE tasks
+                SET status = ?1, updated_at = ?2, worker = ?3
+                WHERE id = (
+                    SELECT id FROM tasks
+                    WHERE status = ?4
+                    ORDER BY id
+                    LIMIT 1
+                )
+                RETURNING id, type, path",
+                params![
+                    TaskStatus::RUNNING.to_string(),
+                    Local::now().to_rfc3339(),
+                    self.name,
+                    TaskStatus::PENDING.to_string()
+                ],
+                |row| {
+                    let id = row.get::<_, i64>(0)?;
+                    let task_type = row.get::<_, String>(1)?;
+                    let path = row.get::<_, String>(2)?;
+                    Ok((id, task_type, path))
+                },
             )
-            RETURNING id, type, path",
-            params![
-                TaskStatus::RUNNING.to_string(),
-                Local::now().to_rfc3339(),
-                TaskStatus::PENDING.to_string()
-            ],
-            |row| {
-                let id = row.get::<_, i64>(0)?;
-                let task_type = row.get::<_, String>(1)?;
-                let path = row.get::<_, String>(2)?;
-                Ok((id, task_type, path))
-            },
-        );
+        };
 
         match task {
             Ok((id, task_type, path)) => {
-                debug!("处理任务: {:?}", (&id, &task_type, &path));
+                debug!("处理任务: {}， {}， {}", id, task_type, path);
                 let path = Path::new(&path);
                 let task_type = TaskType::from_str(&task_type)?;
                 
@@ -352,6 +372,9 @@ impl Worker {
                         }
                     }
                 }
+                // TODO 进程直接关闭，这里会把任务误删了，需要处理
+                debug!("处理任务完成: {}， {}， {}", id, task_type, path.display());
+                let conn = get_conn()?;
                 conn.execute("delete from tasks where id = ?", params![id])?;
             }
             Err(rusqlite::Error::QueryReturnedNoRows) => {
