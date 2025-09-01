@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Context, Result};
 use chrono::{DateTime, Local};
 use rusqlite::params;
 use serde::{Deserialize, Serialize};
@@ -8,6 +8,7 @@ use rusqlite::Error as RusqliteError;
 
 use crate::reader::Item;
 use crate::sqlite::get_conn;
+use crate::utils::{filename_to_str, parent_to_str, path_to_str};
 
 #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
 pub struct SearchResultDirectory {
@@ -118,8 +119,8 @@ impl Indexer {
 
     pub fn write_directory(&self, directory: &Path) -> Result<i64> {
         self.check_is_absolute(directory)?;
-        let dir_name = directory.file_name().unwrap().to_str().unwrap();
-        let dir_path = directory.to_str().unwrap();
+        let dir_name = filename_to_str(directory)?;
+        let dir_path = path_to_str(directory)?;
         let modified_time = self.get_modified_time(directory)?;
 
         let directory_id = get_conn()?.query_row(
@@ -132,7 +133,7 @@ impl Indexer {
 
     pub fn get_directory(&self, directory: &Path) -> Result<SearchResultDirectory> {
         self.check_is_absolute(directory)?;
-        let dir_path = directory.to_str().unwrap();
+        let dir_path = path_to_str(directory)?;
         let conn = get_conn()?;
         let mut stmt =
             conn.prepare("SELECT name, path, modified_time FROM directories WHERE path = ?1")?;
@@ -148,8 +149,8 @@ impl Indexer {
 
     pub fn get_file(&self, file: &Path) -> Result<SearchResultFile> {
         self.check_is_absolute(file)?;
-        let file_path = file.parent().unwrap().to_str().unwrap();
-        let file_name = file.file_name().unwrap().to_str().unwrap();
+        let file_path = parent_to_str(file)?;
+        let file_name = filename_to_str(file)?;
         let conn = get_conn()?;
         let mut stmt = conn.prepare(
             r"SELECT files.name, directories.path, files.modified_time 
@@ -170,9 +171,10 @@ impl Indexer {
 
     pub fn write_file_items(&self, file: &Path, items: Vec<Item>) -> Result<()> {
         self.check_is_absolute(file)?;
-        let directory_id = self.write_directory(file.parent().unwrap())?;
+        let parent_dir = file.parent().with_context(|| format!("Failed to get parent directory from file: {}", file.display()))?;
+        let directory_id = self.write_directory(parent_dir)?;
 
-        let file_name = file.file_name().unwrap().to_str().unwrap();
+        let file_name = filename_to_str(file)?;
         let modified_time = self.get_modified_time(&file)?;
 
         let mut conn = get_conn()?;
@@ -220,7 +222,7 @@ impl Indexer {
         let mut dirs = Vec::new();
         let mut files = Vec::new();
 
-        let dir_path = directory.to_str().unwrap();
+        let dir_path = path_to_str(directory)?;
         let conn = get_conn()?;
         let mut stmt = conn.prepare(
             "SELECT name, path, modified_time FROM directories WHERE path LIKE ?1 AND path NOT LIKE ?2",
@@ -287,7 +289,7 @@ impl Indexer {
         })?;
 
         for row in rows {
-            result.push(row.unwrap());
+            result.push(row.context("Failed to map row to SearchResultDirectory")?);
         }
         Ok(result)
     }
@@ -319,7 +321,7 @@ impl Indexer {
         })?;
 
         for row in rows {
-            result.push(row.unwrap());
+            result.push(row.context("Failed to map row to SearchResultFile")?);
         }
         Ok(result)
     }
@@ -351,15 +353,15 @@ impl Indexer {
         })?;
 
         for row in rows {
-            result.push(row.unwrap());
+            result.push(row.context("Failed to map row to SearchResultItem")?);
         }
         Ok(result)
     }
 
     pub fn delete_file(&self, file: &Path) -> Result<()> {
         self.check_is_absolute(file)?;
-        let file_name = file.file_name().unwrap().to_str().unwrap();
-        let directory_path = file.parent().unwrap().to_str().unwrap();
+        let file_name = filename_to_str(file)?;
+        let directory_path = parent_to_str(file)?;
         let mut conn = get_conn()?;
         let tx = conn.transaction()?;
         let file_id: Result<i64, rusqlite::Error> = tx.query_row(
@@ -403,7 +405,7 @@ impl Indexer {
             self.delete_directory(Path::new(&sub_dir.path))?;
         }
 
-        let dir_path = directory.to_str().unwrap();
+        let dir_path = path_to_str(directory)?;
         let conn = get_conn()?;
         conn.execute("DELETE FROM directories WHERE path = ?1", params![dir_path])?;
 

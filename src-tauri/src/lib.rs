@@ -6,6 +6,8 @@ use std::thread;
 use std::time::Duration;
 use tauri::Emitter;
 use tauri::Manager;
+use anyhow::Result;
+use thiserror::Error;
 
 use crate::config::Config;
 use crate::indexer::IndexStatusStat;
@@ -32,6 +34,7 @@ mod sqlite;
 mod test;
 mod worker;
 mod monitor;
+mod utils;
 
 #[derive(Debug, Clone, Serialize)]
 struct TotalStatus {
@@ -58,55 +61,71 @@ fn setup_index_task(window: tauri::WebviewWindow) {
         }).unwrap();
 }
 
+#[derive(Debug, Error)]
+pub enum TauriError {
+    #[error(transparent)]
+    Anyhow(#[from] anyhow::Error),
+}
+
+impl serde::Serialize for TauriError {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::ser::Serializer,
+    {
+        serializer.serialize_str(self.to_string().as_ref())
+    }
+}
+
 #[tauri::command]
-fn add_index_path(path: &str) {
-    let mut paths = Config::get_index_dir_paths().unwrap();
+fn add_index_path(path: &str) -> Result<(), TauriError> {
+    let mut paths = Config::get_index_dir_paths()?;
     paths.push(path.to_string());
-    Config::set_index_dir_paths(paths).unwrap();
+    Config::set_index_dir_paths(paths)?;
 
     let new_path = Path::new(path);
-    let worker = Worker::new().unwrap();
+    let worker = Worker::new()?;
     info!("开始索引目录: {}", new_path.display());
-    worker.submit_index_all_files(&new_path).unwrap();
-
-    add_watched_path(&new_path);
+    worker.submit_index_all_files(&new_path)?;    
+    add_watched_path(&new_path)?;
+    Ok(())
 }
 
 #[tauri::command]
-fn del_index_path(path: &str) {
-    let mut paths = Config::get_index_dir_paths().unwrap();
+fn del_index_path(path: &str) -> Result<(), TauriError> {
+    let mut paths = Config::get_index_dir_paths()?;
     paths.retain(|p| p != path);
-    Config::set_index_dir_paths(paths).unwrap();
+    Config::set_index_dir_paths(paths)?;
 
     let old_path = Path::new(path);
-    let indexer = Indexer::new().unwrap();
+    let indexer = Indexer::new()?;
     info!("开始删除目录: {}", old_path.display());
-    indexer.delete_directory(&old_path).unwrap();
+    indexer.delete_directory(&old_path)?;
 
-    del_watched_path(&old_path);
+    del_watched_path(&old_path)?;
+    Ok(())
 }
 
 #[tauri::command]
-fn search_directory(query: &str, offset: usize, limit: usize) -> Vec<SearchResultDirectory> {
-    let indexer = Indexer::new().unwrap();
-    indexer.search_directory(query, offset, limit).unwrap()
+fn search_directory(query: &str, offset: usize, limit: usize) -> Result<Vec<SearchResultDirectory>, TauriError> {
+    let indexer = Indexer::new()?;
+    Ok(indexer.search_directory(query, offset, limit)?)
 }
 
 #[tauri::command]
-fn search_file(query: &str, offset: usize, limit: usize) -> Vec<SearchResultFile> {
-    let indexer = Indexer::new().unwrap();
-    indexer.search_file(query, offset, limit).unwrap()
+fn search_file(query: &str, offset: usize, limit: usize) -> Result<Vec<SearchResultFile>, TauriError> {
+    let indexer = Indexer::new()?;
+    Ok(indexer.search_file(query, offset, limit)?)
 }
 
 #[tauri::command]
-fn search_item(query: &str, offset: usize, limit: usize) -> Vec<SearchResultItem> {
-    let indexer = Indexer::new().unwrap();
-    indexer.search_item(query, offset, limit).unwrap()
+fn search_item(query: &str, offset: usize, limit: usize) -> Result<Vec<SearchResultItem>, TauriError> {
+    let indexer = Indexer::new()?;
+    Ok(indexer.search_item(query, offset, limit)?)
 }
 
 #[tauri::command]
-fn get_index_dir_paths() -> Vec<String> {
-    Config::get_index_dir_paths().unwrap_or_else(|_| vec![])
+fn get_index_dir_paths() -> Result<Vec<String>, TauriError> {
+    Ok(Config::get_index_dir_paths()?)
 }
 
 pub fn setup_backend() {

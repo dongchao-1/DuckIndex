@@ -40,7 +40,7 @@ cargo nextest run --manifest-path .\src-tauri\Cargo.toml
 
 ### 4. 运行开发版本
 ```powershell
-pnpm tauri dev
+$env:DEEPINDEX_LOG_LEVEL="debug"; pnpm tauri dev
 ```
 
 ### 5. 构建生产版本
@@ -52,3 +52,4 @@ pnpm tauri build
 
 - 临时目录: `C:\Users\dongchao\AppData\Local\Temp`
 - 应用数据: `C:\Users\dongchao\AppData\Roaming\DeepIndex\data`
+Get-Content C:\Users\dongchao\AppData\Roaming\DeepIndex\data\log\deepindex.log -Tail 1 -Wait -Encoding UTF8

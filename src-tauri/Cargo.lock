@@ -1053,6 +1053,7 @@ dependencies = [
  "tauri-plugin-opener",
  "tempfile",
  "tesseract",
+ "thiserror 2.0.12",
  "zip",
 ]
 

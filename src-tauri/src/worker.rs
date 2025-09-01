@@ -1,3 +1,4 @@
+use anyhow::Context;
 use anyhow::{anyhow, Result};
 use chrono::Local;
 use log::debug;
@@ -117,7 +118,7 @@ impl Worker {
     fn add_task(&self, task_type: &TaskType, path: &Path) -> Result<i64> {
         let conn = get_conn()?;
 
-        let path = path.to_str().unwrap().to_string();
+        let path = path.to_str().with_context(|| format!("Invalid file path: {:?}", path))?.to_string();
         let now = Local::now().to_rfc3339();
         let id = conn.query_one(
             r"INSERT INTO tasks (type, path, status, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5) ON CONFLICT(type, path) 
@@ -258,7 +259,7 @@ impl Worker {
         let (pending, running) = conn.query_one("SELECT COUNT(if(status = ?1, 1, NULL)), COUNT(if(status = ?2, 1, NULL)) FROM tasks", 
             params![TaskStatus::PENDING.to_string(), TaskStatus::RUNNING.to_string()], |row| {
                 Ok((row.get(0)?, row.get(1)?))
-            }).unwrap_or((0, 0));
+            })?;
 
         let mut stmt = conn.prepare("SELECT path FROM tasks WHERE status = ?1")?;
         let paths = stmt.query_map(params![TaskStatus::RUNNING.to_string()], |row| {
@@ -328,7 +329,8 @@ impl Worker {
             Ok((id, task_type, path)) => {
                 debug!("处理任务: {:?}", (&id, &task_type, &path));
                 let path = Path::new(&path);
-                let task_type = TaskType::from_str(&task_type).unwrap();
+                let task_type = TaskType::from_str(&task_type)?;
+                
                 match task_type {
                     TaskType::DIRECTORY => {
                         if path.is_dir() {
@@ -354,10 +356,12 @@ impl Worker {
             }
             Err(rusqlite::Error::QueryReturnedNoRows) => {
                 // 没有待处理的任务，休息1s
+                debug!("没有待处理的任务，休息1s");
                 thread::sleep(Duration::from_secs(1));
                 return Ok(());
             }
             Err(e) => {
+                error!("获取任务失败: {}", e);
                 return Err(anyhow!("获取任务失败: {}", e));
             }
         }

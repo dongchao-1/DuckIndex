@@ -4,6 +4,7 @@ use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 use once_cell::sync::OnceCell;
 use std::{path::Path, sync::mpsc};
 use std::sync::Mutex;
+use anyhow::Result;
 
 use crate::config::Config;
 use crate::Worker;
@@ -35,7 +36,9 @@ pub fn get_monitor() -> &'static Mutex<Monitor> {
                                 notify::EventKind::Create(_) | notify::EventKind::Modify(_) | notify::EventKind::Remove(_) => {
                                     for path in &event.paths {
                                         debug!("文件被变更: {:?}, {}", event.kind, path.display());
-                                        worker.submit_index_all_files(path).unwrap();
+                                        if let Err(e) = worker.submit_index_all_files(path) {
+                                            error!("提交索引任务失败: {}, 错误: {:?}", path.display(), e);
+                                        }
                                     }
                                 },
                                 notify::EventKind::Access(_) => {
@@ -58,31 +61,20 @@ pub fn get_monitor() -> &'static Mutex<Monitor> {
     })
 }
 
-pub fn add_watched_path(new_path: &Path) {
+pub fn add_watched_path(new_path: &Path) -> Result<()> {
     info!("设置新的监听路径: {}", new_path.display());
-    let mut monitor = get_monitor().lock().unwrap();
+    let mut monitor = get_monitor().lock()
+        .map_err(|e| anyhow::anyhow!("Failed to acquire monitor lock: {}", e))?;
 
-    // 添加新的监听路径
-    match monitor.watcher.watch(new_path, RecursiveMode::Recursive) {
-        Ok(_) => {
-            info!("成功添加新的监听路径: {}", new_path.display());
-        },
-        Err(e) => {
-            error!("添加新的监听路径失败: {}, 错误: {:?}", new_path.display(), e);
-        }
-    }
+    monitor.watcher.watch(new_path, RecursiveMode::Recursive)?;
+    Ok(())
 }
 
-pub fn del_watched_path(old_path: &Path) {
+pub fn del_watched_path(old_path: &Path) -> Result<()> {
     info!("删除旧的监听路径: {}", old_path.display());
-    let mut monitor = get_monitor().lock().unwrap();
+    let mut monitor = get_monitor().lock()
+        .map_err(|e| anyhow::anyhow!("Failed to acquire monitor lock: {}", e))?;
 
-    match monitor.watcher.unwatch(old_path) {
-        Ok(_) => {
-            info!("成功移除旧的监听路径: {}", old_path.display());
-        },
-        Err(e) => {
-            error!("移除旧的监听路径失败: {}, 错误: {:?}", old_path.display(), e);
-        }
-    }
+    monitor.watcher.unwatch(old_path)?;
+    Ok(())
 }

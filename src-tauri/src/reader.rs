@@ -1,4 +1,5 @@
-use anyhow::{anyhow, Result};
+use anyhow::{Context, Result};
+use log::debug;
 use lopdf::Document as pdfDocument;
 use quick_xml::events::Event as quickXmlEvent;
 use quick_xml::Reader as quickXmlReader;
@@ -79,7 +80,7 @@ impl CompositeReader {
         
         if let Some(ext) = file.extension() {
             let ext_str = ext.to_str()
-                .ok_or_else(|| anyhow!("Invalid extension in file: {:?}", file))?
+                .with_context(|| format!("Invalid extension in file: {:?}", file))?
                 .to_lowercase();
             return Ok(self.supports_ext.contains(&ext_str));
         }
@@ -89,13 +90,17 @@ impl CompositeReader {
     pub fn read(&self, file_path: &Path) -> Result<Vec<Item>> {
         if let Some(ext) = file_path.extension() {
             let ext_str = ext.to_str()
-                .ok_or_else(|| anyhow!("Invalid extension in file: {:?}", file_path))?
+                .with_context(|| format!("Invalid extension in file: {:?}", file_path))?
                 .to_lowercase();
             if let Some(reader) = self.reader_map.get(&ext_str) {
                 return reader.read(file_path);
+            } else {
+                debug!("Unsupported file type: {:?}", file_path);
             }
+        } else {
+            debug!("Unknown file type: {:?}", file_path);
         }
-        Err(anyhow!("Unsupported file type"))
+        Ok(Vec::new())
     }
 }
 
@@ -301,15 +306,12 @@ impl Reader for PdfReader {
         let mut text = String::new();
 
         for page_num in 1..=doc.get_pages().len() {
-            let page_num_u32: u32 = page_num.try_into()
-                .map_err(|e| anyhow!("Invalid page number {}: {}", page_num, e))?;
+            let page_num_u32: u32 = page_num.try_into()?;
             match doc.extract_text(&[page_num_u32]) {
                 Ok(page_text) => {
-                    // println!("page_text: {}", page_text);
                     text.push_str(&page_text.trim_end_matches("\n"));
                 }
                 Err(_) => {
-                    // You may want to handle the error, log it, or skip the page
                     continue;
                 }
             }
@@ -320,19 +322,16 @@ impl Reader for PdfReader {
         for (i, line) in lines.iter().enumerate() {
             result.push_str(line);
             if i < lines.len() - 1 {
-                // 不是最后一行
                 if line
                     .chars()
                     .last()
                     .map_or(false, |c| c.is_ascii_alphabetic())
                 {
-                    result.push(' '); // 英文行尾加空格
+                    result.push(' ');
                 }
             }
         }
 
-        // println!("Extracted text: {}", text);
-        // println!("result: {}", result);
         items.push(Item {
             content: result,
         });
@@ -348,18 +347,13 @@ struct OcrReader;
 impl Reader for OcrReader {
     fn read(&self, file_path: &Path) -> Result<Vec<Item>> {
         // TODO https://github.com/antimatter15/tesseract-rs/issues/39
-        let tess = Tesseract::new(Some("./tessdata"), Some("eng+chi_sim"))
-            .map_err(|e| anyhow!("Failed to initialize Tesseract: {}", e))?;
+        let tess = Tesseract::new(Some("./tessdata"), Some("eng+chi_sim"))?;
         
         // 使用内存读取避免中文路径问题
-        let image_data = std::fs::read(file_path)
-            .map_err(|e| anyhow!("Failed to read image file {:?}: {}", file_path, e))?;
-        
-        let text = tess.set_image_from_mem(&image_data)
-            .map_err(|e| anyhow!("Failed to set image from memory: {}", e))?
-            .get_text()
-            .map_err(|e| anyhow!("Failed to extract text: {}", e))?;
-            
+        let image_data = std::fs::read(file_path)?;
+
+        let text = tess.set_image_from_mem(&image_data)?.get_text()?;
+
         let items = text.split("\n")
             .filter(|line| !line.trim().is_empty())
             .map(|line| self.remove_whitespace_for_chinese_chars(line))
@@ -416,9 +410,8 @@ mod tests {
     #[test]
     fn test_composite_unknown_extension() {
         let reader = CompositeReader::new().unwrap();
-        let result = reader.read(&Path::new(TEST_DATA_DIR).join("test.xyz"));
-        assert!(result.is_err());
-        assert_eq!(result.unwrap_err().to_string(), "Unsupported file type");
+        let result = reader.read(&Path::new(TEST_DATA_DIR).join("test.xyz")).unwrap();
+        assert_eq!(result.len(), 0);
     }
 
     #[test]
@@ -474,7 +467,7 @@ mod tests {
 
     #[test]
     fn test_ocr_reader() {
-        const TEST_DATA_PIC_DIR: &str = "../test_data/reader/图片";
+        const TEST_DATA_PIC_DIR: &str = "../test_data/reader/pic";
 
         let reader = OcrReader;
         assert_eq!(reader.supports(), vec!["jpg", "jpeg", "png", "tif", "tiff", "gif", "webp"]);

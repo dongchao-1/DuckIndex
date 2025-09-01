@@ -1,6 +1,6 @@
 use std::sync::{Arc, Mutex};
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use log::info;
 use once_cell::sync::OnceCell;
 use r2d2::{Pool, PooledConnection};
@@ -14,9 +14,9 @@ static POOL: OnceCell<Arc<Mutex<Option<Pool<SqliteConnectionManager>>>>> = OnceC
 pub fn init_pool() {
     POOL.get_or_init(|| {
         info!("初始化连接池...");
-        let sqlite_path = get_index_dir();
+        let sqlite_path = get_index_dir().join("index.db");
 
-        let manager = SqliteConnectionManager::file(sqlite_path.join("index.db")).with_init(|conn| {
+        let manager = SqliteConnectionManager::file(sqlite_path).with_init(|conn| {
             // 启用 auto_vacuum (1 是 FULL 模式)
             conn.execute_batch(
                 "PRAGMA auto_vacuum = FULL; \
@@ -29,7 +29,10 @@ pub fn init_pool() {
 }
 
 pub fn get_conn() -> Result<PooledConnection<SqliteConnectionManager>> {
-    Ok(POOL.get().expect("Pool not initialized").lock().unwrap().as_ref().unwrap().get()?)
+    Ok(POOL.get().expect("Pool not initialized").lock().map_err(|e| {
+        log::error!("获取数据库连接失败: {:?}", e);
+        anyhow::anyhow!("获取数据库连接失败")
+    })?.as_ref().context("获取数据库连接as_ref失败")?.get()?)
 }
 
 pub fn close_pool() {
