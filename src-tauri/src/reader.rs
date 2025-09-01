@@ -78,7 +78,9 @@ impl CompositeReader {
         }
         
         if let Some(ext) = file.extension() {
-            let ext_str = ext.to_str().unwrap().to_lowercase();
+            let ext_str = ext.to_str()
+                .ok_or_else(|| anyhow!("Invalid extension in file: {:?}", file))?
+                .to_lowercase();
             return Ok(self.supports_ext.contains(&ext_str));
         }
         Ok(false)
@@ -86,7 +88,9 @@ impl CompositeReader {
 
     pub fn read(&self, file_path: &Path) -> Result<Vec<Item>> {
         if let Some(ext) = file_path.extension() {
-            let ext_str = ext.to_str().unwrap().to_lowercase();
+            let ext_str = ext.to_str()
+                .ok_or_else(|| anyhow!("Invalid extension in file: {:?}", file_path))?
+                .to_lowercase();
             if let Some(reader) = self.reader_map.get(&ext_str) {
                 return reader.read(file_path);
             }
@@ -297,7 +301,9 @@ impl Reader for PdfReader {
         let mut text = String::new();
 
         for page_num in 1..=doc.get_pages().len() {
-            match doc.extract_text(&[page_num.try_into().unwrap()]) {
+            let page_num_u32: u32 = page_num.try_into()
+                .map_err(|e| anyhow!("Invalid page number {}: {}", page_num, e))?;
+            match doc.extract_text(&[page_num_u32]) {
                 Ok(page_text) => {
                     // println!("page_text: {}", page_text);
                     text.push_str(&page_text.trim_end_matches("\n"));
@@ -342,10 +348,21 @@ struct OcrReader;
 impl Reader for OcrReader {
     fn read(&self, file_path: &Path) -> Result<Vec<Item>> {
         // TODO https://github.com/antimatter15/tesseract-rs/issues/39
-        let tess = Tesseract::new(Some("./tessdata"), Some("eng+chi_sim")).unwrap();
-        let text = tess.set_image(file_path.to_str().unwrap()).unwrap().get_text().unwrap();
+        let tess = Tesseract::new(Some("./tessdata"), Some("eng+chi_sim"))
+            .map_err(|e| anyhow!("Failed to initialize Tesseract: {}", e))?;
+        
+        // 使用内存读取避免中文路径问题
+        let image_data = std::fs::read(file_path)
+            .map_err(|e| anyhow!("Failed to read image file {:?}: {}", file_path, e))?;
+        
+        let text = tess.set_image_from_mem(&image_data)
+            .map_err(|e| anyhow!("Failed to set image from memory: {}", e))?
+            .get_text()
+            .map_err(|e| anyhow!("Failed to extract text: {}", e))?;
+            
         let items = text.split("\n")
             .filter(|line| !line.trim().is_empty())
+            .map(|line| self.remove_whitespace_for_chinese_chars(line))
             .map(|line| Item { content: line.to_string() })
             .collect();
         Ok(items)
@@ -356,6 +373,31 @@ impl Reader for OcrReader {
     }
 }
 
+impl OcrReader {
+    fn remove_whitespace_for_chinese_chars(&self, s: &str) -> String {
+        let mut result = String::new();
+        let mut chars = s.trim().chars().peekable();
+
+        while let Some(current_char) = chars.next() {
+            result.push(current_char);
+
+            if self.is_chinese(current_char) {
+                while let Some(c) = chars.peek() {
+                    if c.is_whitespace() {
+                        chars.next();
+                    } else {
+                        break;
+                    }
+                }
+            }
+        }
+        result
+    }
+
+    fn is_chinese(&self, c: char) -> bool {
+        c >= '\u{4e00}' && c <= '\u{9fa5}'
+    }
+}
 
 
 #[cfg(test)]
@@ -432,7 +474,7 @@ mod tests {
 
     #[test]
     fn test_ocr_reader() {
-        const TEST_DATA_PIC_DIR: &str = "../test_data/reader/pic";
+        const TEST_DATA_PIC_DIR: &str = "../test_data/reader/图片";
 
         let reader = OcrReader;
         assert_eq!(reader.supports(), vec!["jpg", "jpeg", "png", "tif", "tiff", "gif", "webp"]);

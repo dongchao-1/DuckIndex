@@ -23,12 +23,13 @@ cd vcpkg
 
 # 安装tesseract OCR库
 ./vcpkg install tesseract:x64-windows
+
+# 设置环境变量和PATH
+设置 .vscode\settings.json 中vcpkg目录
 ```
 
 ### 3. 手动运行测试（命令行）
 ```powershell
-# 设置环境变量和PATH
-设置 .vscode\settings.json
 
 # 安装nextest
 cargo install nextest
@@ -39,7 +40,7 @@ cargo nextest run --manifest-path .\src-tauri\Cargo.toml
 
 ### 4. 运行开发版本
 ```powershell
-$env:RUST_BACKTRACE = "1"; $env:DEEPINDEX_LOG_LEVEL = "info"; pnpm tauri dev
+pnpm tauri dev
 ```
 
 ### 5. 构建生产版本
