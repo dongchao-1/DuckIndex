@@ -169,7 +169,7 @@ impl Indexer {
         Ok(row)
     }
 
-    pub fn write_file_items(&self, file: &Path, items: Vec<Item>) -> Result<()> {
+    pub fn write_file_items(&self, file: &Path, items: Vec<Item>) -> Result<i64> {
         self.check_is_absolute(file)?;
         let parent_dir = file.parent().with_context(|| format!("Failed to get parent directory from file: {}", file.display()))?;
         let directory_id = self.write_directory(parent_dir)?;
@@ -210,7 +210,7 @@ impl Indexer {
             tx.execute(&query, params.as_slice())?;
         }
         tx.commit()?;
-        Ok(())
+        Ok(file_id)
     }
 
     pub fn get_sub_directories_and_files(

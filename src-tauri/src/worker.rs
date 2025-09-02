@@ -351,28 +351,53 @@ impl Worker {
                 let path = Path::new(&path);
                 let task_type = TaskType::from_str(&task_type)?;
                 
-                match task_type {
-                    TaskType::DIRECTORY => {
-                        if path.is_dir() {
-                            self.indexer.write_directory(path)?;
+                // 重试机制：最多重试3次
+                let mut retry_count = 0;
+                let max_retries = 3;
+                
+                while retry_count < max_retries {
+                    let result: Result<i64> = match task_type {
+                        TaskType::DIRECTORY => {
+                            if path.is_dir() {
+                                self.indexer.write_directory(path)
+                            } else {
+                                Err(anyhow!("Directory not found: {}", path.display()))
+                            }
                         }
-                    }
-                    TaskType::FILE => {
-                        if path.is_file() {
-                            match self.reader.read(path) {
-                                Ok(items) => {
-                                    self.indexer.write_file_items(path, items)?;
-                                },
-                                Err(e) => {
-                                    self.indexer.write_file_items(path, Vec::new())?;
-                                    error!("索引任务失败: {} {}", path.display(), e);
-                                    error!("{}", e.backtrace());
+                        TaskType::FILE => {
+                            if path.is_file() {
+                                match self.reader.read(path) {
+                                    Ok(items) => {
+                                        self.indexer.write_file_items(path, items)
+                                    },
+                                    Err(e) => {
+                                        Err(anyhow!("Read file failed: {} {}", path.display(), e))
+                                    }
                                 }
+                            } else {
+                                Err(anyhow!("File not found: {}", path.display()))
+                            }
+                        }
+                    };
+                    
+                    match result {
+                        Ok(_) => {
+                            info!("任务处理成功: {} {} {}", id, task_type, path.display());
+                            break;
+                        }
+                        Err(e) => {
+                            retry_count += 1;
+                            error!("任务处理失败: {} {} {} {}", id, task_type, path.display(), e);
+                            error!("{}", e.backtrace());
+                            if retry_count == max_retries {
+                                // 重试失败，只写入文件名
+                                error!("任务重试全部失败，只写入文件名: {} {} {}", id, task_type, path.display());
+                                self.indexer.write_file_items(path, Vec::new())?;
+                                break;
                             }
                         }
                     }
                 }
-                // TODO 进程直接关闭，这里会把任务误删了，需要处理
                 debug!("处理任务完成: {}， {}， {}", id, task_type, path.display());
                 let conn = get_conn()?;
                 conn.execute("delete from tasks where id = ?", params![id])?;

@@ -37,7 +37,7 @@ pub fn init_logger() {
 
     let policy = CompoundPolicy::new(Box::new(trigger), Box::new(roller));
 
-    let pattern = "{d(%Y-%m-%d %H:%M:%S)} {T} {f}:{L} [{l}] {m}{n}";
+    let pattern = "{d(%Y-%m-%d %H:%M:%S%.3f)} {T} {f}:{L} [{l}] {m}{n}";
     let appender: Box<dyn log4rs::append::Append>;
     if let Ok(_) = env::var("DEEPINDEX_TEST_DIR") {
         appender = Box::new(
