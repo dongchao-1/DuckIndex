@@ -8,7 +8,7 @@ use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::path::Path;
 use std::sync::Arc;
-use std::{fs, vec};
+use std::{env, fs, vec};
 use tempfile::TempDir;
 use zip::ZipArchive;
 use tesseract::Tesseract;
@@ -348,8 +348,13 @@ struct OcrReader;
 impl Reader for OcrReader {
     fn read(&self, file_path: &Path) -> Result<Vec<Item>> {
         // TODO https://github.com/antimatter15/tesseract-rs/issues/39
-        let tess = Tesseract::new(Some("./tessdata"), Some("eng+chi_sim"))?;
-        
+        let tessdata_path = env::current_exe()?
+            .parent().context("获取父目录失败")?
+            .join("tessdata")
+            .to_str().context("转换tessdata路径为字符串失败")?
+            .to_string();
+        let tess = Tesseract::new(Some(&tessdata_path), Some("eng+chi_sim"))?;
+
         // 使用内存读取避免中文路径问题
         let image_data = std::fs::read(file_path)?;
 
