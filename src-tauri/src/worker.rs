@@ -361,7 +361,7 @@ impl Worker {
                             if path.is_dir() {
                                 self.indexer.write_directory(path)
                             } else {
-                                Err(anyhow!("Directory not found: {}", path.display()))
+                                Err(anyhow!("Directory not found"))
                             }
                         }
                         TaskType::FILE => {
@@ -371,11 +371,11 @@ impl Worker {
                                         self.indexer.write_file_items(path, items)
                                     },
                                     Err(e) => {
-                                        Err(anyhow!("Read file failed: {} {}", path.display(), e))
+                                        Err(anyhow!("Read file failed: {}", e))
                                     }
                                 }
                             } else {
-                                Err(anyhow!("File not found: {}", path.display()))
+                                Err(anyhow!("File not found"))
                             }
                         }
                     };

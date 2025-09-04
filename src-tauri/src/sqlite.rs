@@ -17,11 +17,14 @@ pub fn init_pool() {
         let sqlite_path = get_index_dir().join("index.db");
 
         let manager = SqliteConnectionManager::file(sqlite_path).with_init(|conn| {
-            // 启用 auto_vacuum (1 是 FULL 模式)
             conn.execute_batch(
-                "PRAGMA auto_vacuum = FULL; \
-                    PRAGMA journal_mode = WAL;",
+                "PRAGMA journal_mode = WAL; \
+                    PRAGMA auto_vacuum = FULL; \
+                    PRAGMA busy_timeout = 2147483647;",
             )?;
+
+            conn.busy_handler(Some(|_retries| true))?;
+
             Ok(())
         });
         Arc::new(Mutex::new(Some(Pool::new(manager).expect("Failed to create pool"))))
@@ -45,4 +48,16 @@ pub fn close_pool() {
             }
         }
     }
+}
+
+pub fn disable_auto_vacuum() -> Result<()> {
+    let conn = get_conn()?;
+    conn.execute_batch("PRAGMA auto_vacuum = NONE;")?;
+    Ok(())
+}
+
+pub fn enable_auto_vacuum() -> Result<()> {
+    let conn = get_conn()?;
+    conn.execute_batch("PRAGMA auto_vacuum = FULL; VACUUM;")?;
+    Ok(())
 }

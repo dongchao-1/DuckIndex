@@ -19,6 +19,8 @@ use crate::log::init_logger;
 use crate::monitor::add_watched_path;
 use crate::monitor::del_watched_path;
 use crate::sqlite::close_pool;
+use crate::sqlite::disable_auto_vacuum;
+use crate::sqlite::enable_auto_vacuum;
 use crate::sqlite::init_pool;
 use crate::worker::TaskStatusStat;
 use crate::worker::Worker;
@@ -78,30 +80,37 @@ impl serde::Serialize for TauriError {
 
 #[tauri::command]
 fn add_index_path(path: &str) -> Result<(), TauriError> {
+    let new_path = Path::new(path);
+    add_watched_path(&new_path)?;
+
+    disable_auto_vacuum()?;
+    let worker = Worker::new()?;
+    info!("开始索引目录: {}", new_path.display());
+    worker.submit_index_all_files(&new_path)?;
+    enable_auto_vacuum()?;
+
     let mut paths = Config::get_index_dir_paths()?;
     paths.push(path.to_string());
     Config::set_index_dir_paths(paths)?;
 
-    let new_path = Path::new(path);
-    let worker = Worker::new()?;
-    info!("开始索引目录: {}", new_path.display());
-    worker.submit_index_all_files(&new_path)?;    
-    add_watched_path(&new_path)?;
     Ok(())
 }
 
 #[tauri::command]
 fn del_index_path(path: &str) -> Result<(), TauriError> {
+    let old_path = Path::new(path);
+    del_watched_path(&old_path)?;
+
+    disable_auto_vacuum()?;
+    let indexer = Indexer::new()?;
+    info!("开始删除目录: {}", old_path.display());
+    indexer.delete_directory(&old_path)?;
+    enable_auto_vacuum()?;
+
     let mut paths = Config::get_index_dir_paths()?;
     paths.retain(|p| p != path);
     Config::set_index_dir_paths(paths)?;
 
-    let old_path = Path::new(path);
-    let indexer = Indexer::new()?;
-    info!("开始删除目录: {}", old_path.display());
-    indexer.delete_directory(&old_path)?;
-
-    del_watched_path(&old_path)?;
     Ok(())
 }
 

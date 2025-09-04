@@ -243,7 +243,8 @@ impl Reader for XlsxReader {
         let document_path = temp_dir.path().join("xl/sharedStrings.xml");
         let mut items = vec![];
 
-        let reader = BufReader::new(File::open(document_path)?);
+        // TODO 也有数据存在 sheet?.xml 中，需要读取
+        let reader = BufReader::new(File::open(document_path).context("xl/sharedStrings.xml 不存在")?);
         let mut xml_reader = quickXmlReader::from_reader(reader);
         let mut buf = Vec::new();
         let mut current_text = String::new();

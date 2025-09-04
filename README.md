@@ -52,3 +52,6 @@ pnpm tauri build
 
 - 临时目录: `C:\Users\dongchao\AppData\Local\Temp`
 - 应用数据: `C:\Users\dongchao\AppData\Roaming\DeepIndex\data`
+
+TODO
+1. 删除任务时 database is locked

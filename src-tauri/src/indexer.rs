@@ -1,5 +1,6 @@
 use anyhow::{anyhow, Context, Result};
 use chrono::{DateTime, Local};
+use log::{debug, info};
 use rusqlite::params;
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -77,6 +78,8 @@ impl Indexer {
                 modified_time TEXT NOT NULL,
                 UNIQUE (path)
             );
+            CREATE INDEX idx_directories_name ON directories (name);
+
             DROP TABLE IF EXISTS files;
             CREATE TABLE files (
                 id INTEGER PRIMARY KEY,
@@ -85,12 +88,16 @@ impl Indexer {
                 modified_time TEXT NOT NULL,
                 UNIQUE (directory_id, name)
             );
+            CREATE INDEX idx_files_name ON files (name);
+
             DROP TABLE IF EXISTS items;
             CREATE TABLE items (
                 id INTEGER PRIMARY KEY,
                 file_id INTEGER NOT NULL,
                 content TEXT NOT NULL
             );
+            CREATE INDEX idx_items_file_id ON items (file_id);
+
             DROP TABLE IF EXISTS indexer_version;
             CREATE TABLE indexer_version (
                 version TEXT
@@ -395,16 +402,20 @@ impl Indexer {
     pub fn delete_directory(&self, directory: &Path) -> Result<()> {
         self.check_is_absolute(&directory)?;
 
+        debug!("查找子目录和文件: {}", directory.display());
         let (sub_dirs, files) = self.get_sub_directories_and_files(&directory)?;
 
         for file in files {
+            info!("删除文件: {}", file.name);
             self.delete_file(&Path::new(&file.path).join(&file.name))?;
         }
 
         for sub_dir in sub_dirs {
+            info!("删除子目录: {}", sub_dir.path);
             self.delete_directory(Path::new(&sub_dir.path))?;
         }
 
+        info!("删除目录记录: {}", directory.display());
         let dir_path = path_to_str(directory)?;
         let conn = get_conn()?;
         conn.execute("DELETE FROM directories WHERE path = ?1", params![dir_path])?;
