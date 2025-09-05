@@ -35,6 +35,7 @@ cd vcpkg
 cargo install nextest
 
 # 运行所有测试
+cargo clippy --manifest-path .\src-tauri\Cargo.toml
 cargo nextest run --manifest-path .\src-tauri\Cargo.toml
 ```
 

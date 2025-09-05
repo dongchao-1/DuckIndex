@@ -10,7 +10,7 @@ fn main() {
 
     // 获取 Cargo 的目标构建目录
     let out_dir = env::var("OUT_DIR").expect("OUT_DIR not set");
-    println!("cargo:info=OUT_DIR: {}", out_dir);
+    println!("cargo:info=OUT_DIR: {out_dir}");
 
     // OUT_DIR 通常是: target/debug/build/your-crate-xxx/out
     // 我们需要回到 target/debug 目录
@@ -49,8 +49,8 @@ fn main() {
         let src_path = tesseract_bin_path.join(dll_name);
         // 直接复制到 target/debug 或 target/release 目录
         let dest_path = target_dir.join(dll_name);
-        fs::create_dir_all(&target_dir).expect(&format!("Failed to create directory {}", target_dir.display()));
-        fs::copy(&src_path, &dest_path).expect(&format!("Failed to copy {} to {}", src_path.display(), dest_path.display()));
+        fs::create_dir_all(&target_dir).unwrap_or_else(|_| panic!("Failed to create directory {}", target_dir.display()));
+        fs::copy(&src_path, &dest_path).unwrap_or_else(|_| panic!("Failed to copy {} to {}", src_path.display(), dest_path.display()));
     }
 
     tauri_build::build()

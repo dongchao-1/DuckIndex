@@ -1,4 +1,5 @@
 {
+    "rust-analyzer.check.command": "clippy",
     "rust-analyzer.runnables.extraEnv": {
         "RUSTFLAGS": "-Ctarget-feature=+crt-static",
         "TESSERACT_BIN_PATH": "C:\\Users\\dongchao\\Code\\vcpkg\\installed\\x64-windows\\bin",

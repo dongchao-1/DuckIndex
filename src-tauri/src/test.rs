@@ -1,5 +1,5 @@
 #[cfg(test)]
-pub mod test {
+pub mod test_mod {
     use std::env;
     use chrono::Local;
     use tempfile::Builder;
@@ -16,21 +16,20 @@ pub mod test {
         }
         
         pub fn new_with_cleanup(auto_cleanup: bool) -> Self {
-            let temp_dir;
             let now = Local::now().format("%Y-%m-%d_%H-%M-%S").to_string();
-            let dir_name = format!(".deepindex_test_{}_", now);
-            if auto_cleanup {
-                temp_dir = Builder::new()
+            let dir_name = format!(".deepindex_test_{now}_");
+            let temp_dir = if auto_cleanup {
+                Builder::new()
                     .prefix(&dir_name)
                     .tempdir()
-                    .unwrap();
+                    .unwrap()
             } else {
-                temp_dir = Builder::new()
+                Builder::new()
                     .prefix(&dir_name)
                     .disable_cleanup(true)
                     .tempdir()
-                    .unwrap();
-            }
+                    .unwrap()
+            };
             env::set_var("DEEPINDEX_TEST_DIR", temp_dir.path());
 
             setup_backend();

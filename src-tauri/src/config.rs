@@ -33,7 +33,7 @@ impl Config {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test::test::TestEnv;
+    use crate::test::test_mod::TestEnv;
 
     #[test]
     fn test_get_index_dir_paths() {

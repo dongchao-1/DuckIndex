@@ -80,7 +80,7 @@ impl CompositeReader {
         
         if let Some(ext) = file.extension() {
             let ext_str = ext.to_str()
-                .with_context(|| format!("Invalid extension in file: {:?}", file))?
+                .with_context(|| format!("Invalid extension in file: {file:?}"))?
                 .to_lowercase();
             return Ok(self.supports_ext.contains(&ext_str));
         }
@@ -90,15 +90,15 @@ impl CompositeReader {
     pub fn read(&self, file_path: &Path) -> Result<Vec<Item>> {
         if let Some(ext) = file_path.extension() {
             let ext_str = ext.to_str()
-                .with_context(|| format!("Invalid extension in file: {:?}", file_path))?
+                .with_context(|| format!("Invalid extension in file: {file_path:?}"))?
                 .to_lowercase();
             if let Some(reader) = self.reader_map.get(&ext_str) {
                 return reader.read(file_path);
             } else {
-                debug!("Unsupported file type: {:?}", file_path);
+                debug!("Unsupported file type: {file_path:?}");
             }
         } else {
-            debug!("Unknown file type: {:?}", file_path);
+            debug!("Unknown file type: {file_path:?}");
         }
         Ok(Vec::new())
     }
@@ -311,7 +311,7 @@ impl Reader for PdfReader {
             let page_num_u32: u32 = page_num.try_into()?;
             match doc.extract_text(&[page_num_u32]) {
                 Ok(page_text) => {
-                    text.push_str(&page_text.trim_end_matches("\n"));
+                    text.push_str(page_text.trim_end_matches("\n"));
                 }
                 Err(_) => {
                     continue;
@@ -323,15 +323,14 @@ impl Reader for PdfReader {
 
         for (i, line) in lines.iter().enumerate() {
             result.push_str(line);
-            if i < lines.len() - 1 {
-                if line
+            if i < lines.len() - 1
+                && line
                     .chars()
                     .last()
-                    .map_or(false, |c| c.is_ascii_alphabetic())
+                    .is_some_and(|c| c.is_ascii_alphabetic())
                 {
                     result.push(' ');
                 }
-            }
         }
 
         items.push(Item {
@@ -391,7 +390,7 @@ impl OcrReader {
     }
 
     fn is_chinese(&self, c: char) -> bool {
-        c >= '\u{4e00}' && c <= '\u{9fa5}'
+        ('\u{4e00}'..='\u{9fa5}').contains(&c)
     }
 }
 

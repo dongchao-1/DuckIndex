@@ -20,7 +20,7 @@ pub fn init_logger() {
             "debug" => LevelFilter::Debug,
             "trace" => LevelFilter::Trace,
             _ => {
-                panic!("未知的日志级别: {}", log_level);
+                panic!("未知的日志级别: {log_level}");
             }
         }
     } else {
@@ -38,21 +38,20 @@ pub fn init_logger() {
     let policy = CompoundPolicy::new(Box::new(trigger), Box::new(roller));
 
     let pattern = "{d(%Y-%m-%d %H:%M:%S%.3f)} {T} {f}:{L} [{l}] {m}{n}";
-    let appender: Box<dyn log4rs::append::Append>;
-    if let Ok(_) = env::var("DEEPINDEX_TEST_DIR") {
-        appender = Box::new(
+    let appender = if env::var("DEEPINDEX_TEST_DIR").is_ok() {
+        Box::new(
             log4rs::append::console::ConsoleAppender::builder()
                 .encoder(Box::new(PatternEncoder::new(pattern)))
                 .build(),
-        );
+        ) as Box<dyn log4rs::append::Append>
     } else {
-        appender = Box::new(
+        Box::new(
             log4rs::append::rolling_file::RollingFileAppender::builder()
                 .encoder(Box::new(PatternEncoder::new(pattern)))
                 .build(get_log_dir().join("deepindex.log"), Box::new(policy))
                 .unwrap(),
-        );
-    }
+        ) as Box<dyn log4rs::append::Append>
+    };
 
     let log_config = Config::builder()
         .appender(Appender::builder().build("appender", appender))
@@ -76,7 +75,7 @@ pub fn init_logger() {
 
 #[cfg(test)]
 mod tests {
-    use crate::test::test::TestEnv;
+    use crate::test::test_mod::TestEnv;
     use log::{debug, error, info, trace, warn};
 
     #[test]

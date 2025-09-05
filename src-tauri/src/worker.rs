@@ -36,18 +36,18 @@ pub struct Worker {
 
 #[derive(Debug, PartialEq, EnumString, Display)]
 enum TaskType {
-    #[strum(to_string = "DIRECTORY")]
-    DIRECTORY,
-    #[strum(to_string = "FILE")]
-    FILE,
+    #[strum(to_string = "Directory")]
+    Directory,
+    #[strum(to_string = "File")]
+    File,
 }
 
 #[derive(Debug, PartialEq, EnumString, Display)]
 enum TaskStatus {
-    #[strum(to_string = "PENDING")]
-    PENDING,
-    #[strum(to_string = "RUNNING")]
-    RUNNING,
+    #[strum(to_string = "Pending")]
+    Pending,
+    #[strum(to_string = "Running")]
+    Running,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -63,9 +63,9 @@ impl Worker {
         conn.execute(
             "UPDATE tasks SET status = ?1, updated_at = ?2, worker = null WHERE status = ?3",
             params![
-                TaskStatus::PENDING.to_string(),
+                TaskStatus::Pending.to_string(),
                 Local::now().to_rfc3339(),
-                TaskStatus::RUNNING.to_string()
+                TaskStatus::Running.to_string()
             ],
         )?;
         Ok(())
@@ -81,7 +81,7 @@ impl Worker {
     fn add_task(&self, task_type: &TaskType, path: &Path) -> Result<i64> {
         let conn = get_conn()?;
 
-        let path = path.to_str().with_context(|| format!("Invalid file path: {:?}", path))?.to_string();
+        let path = path.to_str().with_context(|| format!("Invalid file path: {path:?}"))?.to_string();
         let now = Local::now().to_rfc3339();
         let id = conn.query_one(
             r"INSERT INTO tasks (type, path, status, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5) ON CONFLICT(type, path) 
@@ -89,7 +89,7 @@ impl Worker {
             params![
                 task_type.to_string(),
                 path,
-                TaskStatus::PENDING.to_string(),
+                TaskStatus::Pending.to_string(),
                 now,
                 now
             ],
@@ -132,7 +132,7 @@ impl Worker {
                             index_dir.modified_time,
                             modified_time
                         );
-                        self.add_task(&TaskType::DIRECTORY, path)?;
+                        self.add_task(&TaskType::Directory, path)?;
                         info!("目录时间已更新。目录: {}", path.display());
                         // 目录修改了
                         let (index_sub_dirs, index_sub_files) =
@@ -153,22 +153,22 @@ impl Worker {
                         for dir in index_sub_dirs.difference(&current_sub_dirs) {
                             // 删除的目录
                             info!("删除目录索引: {}", dir.display());
-                            debug!("index_sub_dirs: {:?}", index_sub_dirs);
-                            debug!("current_sub_dirs: {:?}", current_sub_dirs);
+                            debug!("index_sub_dirs: {index_sub_dirs:?}");
+                            debug!("current_sub_dirs: {current_sub_dirs:?}");
                             self.indexer.delete_directory(dir)?;
                         }
                         for file in index_sub_files.difference(&current_sub_files) {
                             // 删除的文件
                             info!("删除文件索引: {}", file.display());
-                            debug!("index_sub_files: {:?}", index_sub_files);
-                            debug!("current_sub_files: {:?}", current_sub_files);
+                            debug!("index_sub_files: {index_sub_files:?}");
+                            debug!("current_sub_files: {current_sub_files:?}");
                             self.indexer.delete_file(file)?;
                         }
                     }
                 } else {
                     // 数据库中没有这个目录
                     info!("目录未索引，添加任务。目录: {}", path.display());
-                    self.add_task(&TaskType::DIRECTORY, path)?;
+                    self.add_task(&TaskType::Directory, path)?;
                 }
 
                 for entry in fs::read_dir(path)? {
@@ -189,24 +189,23 @@ impl Worker {
                                 );
                                 self.indexer.delete_file(&path)?;
                                 if self.reader.supports(&path)? {
-                                    self.add_task(&TaskType::FILE, &path)?;
+                                    self.add_task(&TaskType::File, &path)?;
                                 }
                             }
-                        } else {
-                            if self.reader.supports(&path)? {
-                                info!("文件未索引，添加任务。文件: {}", path.display());
-                                self.add_task(&TaskType::FILE, &path)?;
-                            }
+                        } else if self.reader.supports(&path)? {
+                            info!("文件未索引，添加任务。文件: {}", path.display());
+                            self.add_task(&TaskType::File, &path)?;
                         }
                     } else if path.is_dir() {
                         self.submit_index_all_files(&path)?;
                     }
                 }
             } else if path.is_file() {
-                self.indexer.delete_file(&path)?;
+                self.indexer.delete_file(path)?;
+                // TODO: 这里不判断文件类型，文件名都要索引，内容在process时候在判断
                 if self.reader.supports(path)? {
                     info!("添加文件索引任务。文件: {}", path.display());
-                    self.add_task(&TaskType::FILE, path)?;
+                    self.add_task(&TaskType::File, path)?;
                 }
             }
         } else {
@@ -220,13 +219,13 @@ impl Worker {
     pub fn get_tasks_status(&self) -> Result<TaskStatusStat> {
         let conn = get_conn()?;
         let (pending, running) = conn.query_one("SELECT COUNT(if(status = ?1, 1, NULL)), COUNT(if(status = ?2, 1, NULL)) FROM tasks", 
-            params![TaskStatus::PENDING.to_string(), TaskStatus::RUNNING.to_string()], |row| {
+            params![TaskStatus::Pending.to_string(), TaskStatus::Running.to_string()], |row| {
                 Ok((row.get(0)?, row.get(1)?))
             })?;
 
         let mut stmt = conn.prepare("SELECT path FROM tasks WHERE status = ?1")?;
-        let paths = stmt.query_map(params![TaskStatus::RUNNING.to_string()], |row| {
-            Ok(row.get::<_, String>(0)?)
+        let paths = stmt.query_map(params![TaskStatus::Running.to_string()], |row| {
+            row.get::<_, String>(0)
         })?;
         let mut running_tasks = Vec::new();
         for path in paths {
@@ -243,17 +242,17 @@ impl Worker {
     pub fn start_process() -> Result<()> {
         let num_cpus = std::thread::available_parallelism().map_or(1, |n| n.get());
         let num_threads = std::cmp::max(1, num_cpus / 4);
-        info!("启动 {} 索引线程", num_threads);
+        info!("启动 {num_threads} 索引线程");
         for i in 0..num_threads {
             thread::Builder::new()
-                .name(format!("index-worker-thread-{}", i))
+                .name(format!("index-worker-thread-{i}"))
                 .spawn(move || {
                     let worker = Worker::new().unwrap();
                     loop {
                         match worker.process_task() {
                             Ok(_) => {}
                             Err(e) => {
-                                error!("处理任务失败: {}", e);
+                                error!("处理任务失败: {e}");
                                 error!("{}", e.backtrace());
                             }
                         }
@@ -281,10 +280,10 @@ impl Worker {
                 )
                 RETURNING id, type, path",
                 params![
-                    TaskStatus::RUNNING.to_string(),
+                    TaskStatus::Running.to_string(),
                     Local::now().to_rfc3339(),
                     self.name,
-                    TaskStatus::PENDING.to_string()
+                    TaskStatus::Pending.to_string()
                 ],
                 |row| {
                     let id = row.get::<_, i64>(0)?;
@@ -297,7 +296,7 @@ impl Worker {
 
         match task {
             Ok((id, task_type, path)) => {
-                debug!("处理任务: {}， {}， {}", id, task_type, path);
+                debug!("处理任务: {id}, {task_type}, {path}");
                 let path = Path::new(&path);
                 let task_type = TaskType::from_str(&task_type)?;
                 
@@ -307,14 +306,14 @@ impl Worker {
                 
                 while retry_count < max_retries {
                     let result: Result<i64> = match task_type {
-                        TaskType::DIRECTORY => {
+                        TaskType::Directory => {
                             if path.is_dir() {
                                 self.indexer.write_directory(path)
                             } else {
                                 Err(anyhow!("Directory not found"))
                             }
                         }
-                        TaskType::FILE => {
+                        TaskType::File => {
                             if path.is_file() {
                                 match self.reader.read(path) {
                                     Ok(items) => {
@@ -332,23 +331,23 @@ impl Worker {
                     
                     match result {
                         Ok(_) => {
-                            info!("任务处理成功: {} {} {}", id, task_type, path.display());
+                            info!("任务处理成功: {id}, {task_type}, {}", path.display());
                             break;
                         }
                         Err(e) => {
                             retry_count += 1;
-                            error!("任务处理失败: {} {} {} {}", id, task_type, path.display(), e);
+                            error!("任务处理失败: {id}, {task_type}, {}, {e}", path.display());
                             error!("{}", e.backtrace());
                             if retry_count == max_retries {
                                 // 重试失败，只写入文件名
-                                error!("任务重试全部失败，只写入文件名: {} {} {}", id, task_type, path.display());
+                                error!("任务重试全部失败，只写入文件名: {id}, {task_type}, {}", path.display());
                                 self.indexer.write_file_items(path, Vec::new())?;
                                 break;
                             }
                         }
                     }
                 }
-                debug!("处理任务完成: {}， {}， {}", id, task_type, path.display());
+                debug!("处理任务完成: {}, {}, {}", id, task_type, path.display());
                 let conn = get_conn()?;
                 conn.execute("delete from tasks where id = ?", params![id])?;
             }
@@ -359,7 +358,7 @@ impl Worker {
                 return Ok(());
             }
             Err(e) => {
-                error!("获取任务失败: {}", e);
+                error!("获取任务失败: {e}");
                 return Err(anyhow!("获取任务失败: {}", e));
             }
         }
@@ -374,7 +373,7 @@ mod tests {
     use fs_extra::file::write_all;
 
     use super::*;
-    use crate::test::test::TestEnv;
+    use crate::test::test_mod::TestEnv;
     use crate::worker::Worker;
     use crate::indexer::Indexer;
 
@@ -384,7 +383,7 @@ mod tests {
         let (_env, temp_test_data_worker) = prepare_test_data_worker();
         let worker = Worker::new().unwrap();
 
-        let task_type = TaskType::DIRECTORY;
+        let task_type = TaskType::Directory;
         let path = temp_test_data_worker.join("office");
 
         let id = worker.add_task(&task_type, &path).unwrap();
@@ -399,9 +398,9 @@ mod tests {
 
         let source_dir = Path::new("../test_data/indexer/");
         let dest_dir = Path::new(env.temp_dir.path());
-        fs::create_dir_all(&dest_dir).unwrap();
+        fs::create_dir_all(dest_dir).unwrap();
         let options = CopyOptions::new();
-        copy(&source_dir, &dest_dir, &options).unwrap();
+        copy(source_dir, dest_dir, &options).unwrap();
 
         let temp_test_data_worker = dest_dir.join("indexer");
 
@@ -603,14 +602,14 @@ mod tests {
         assert_eq!(status.running, 0);
         assert_eq!(status.running_tasks, Vec::<String>::new());
 
-        let _ = worker.process_task().unwrap();
+        worker.process_task().unwrap();
         let status = worker.get_tasks_status().unwrap();
         assert_eq!(status.pending, 3);
         assert_eq!(status.running, 0);
         assert_eq!(status.running_tasks, Vec::<String>::new());
 
         for _ in 0..3 {
-            let _ = worker.process_task().unwrap();
+            worker.process_task().unwrap();
         }
         let status = worker.get_tasks_status().unwrap();
         assert_eq!(status.pending, 0);

@@ -56,7 +56,7 @@ where
     T: Send + 'static,
 {
     match async_runtime::spawn(fut).await {
-        Ok(inner) => inner.map_err(|e| TauriError::Anyhow(e.into())),
+        Ok(inner) => inner.map_err(TauriError::Anyhow),
         Err(join_err) => Err(TauriError::Anyhow(join_err.into())),
     }
 }
@@ -66,12 +66,12 @@ async fn add_index_path(path: String) -> TauriResult<()> {
     tauri_spawn(async move {
         // TODO 检查是否重复、覆盖
         let new_path = Path::new(&path);
-        add_watched_path(&new_path)?;
+        add_watched_path(new_path)?;
 
         disable_auto_vacuum()?;
         let worker = Worker::new()?;
         info!("开始索引目录: {}", new_path.display());
-        worker.submit_index_all_files(&new_path)?;
+        worker.submit_index_all_files(new_path)?;
         enable_auto_vacuum()?;
 
         let mut paths = Config::get_index_dir_paths()?;
@@ -87,12 +87,13 @@ async fn del_index_path(path: String) -> TauriResult<()> {
     tauri_spawn(async move {
         // TODO 检查task状态
         let old_path = Path::new(&path);
-        del_watched_path(&old_path)?;
+        del_watched_path(old_path)?;
 
+        // TODO 提交task删除索引，而不是直接删除，否则前端没法控制
         disable_auto_vacuum()?;
         let indexer = Indexer::new()?;
         info!("开始删除目录: {}", old_path.display());
-        indexer.delete_directory(&old_path)?;
+        indexer.delete_directory(old_path)?;
         enable_auto_vacuum()?;
 
         let mut paths = Config::get_index_dir_paths()?;
@@ -107,7 +108,7 @@ async fn del_index_path(path: String) -> TauriResult<()> {
 async fn search_directory(query: String, offset: usize, limit: usize) -> TauriResult<Vec<SearchResultDirectory>> {
     tauri_spawn(async move {
         let indexer = Indexer::new()?;
-        Ok(indexer.search_directory(&query, offset, limit)?)
+        indexer.search_directory(&query, offset, limit)
     }).await
 }
 
@@ -115,7 +116,7 @@ async fn search_directory(query: String, offset: usize, limit: usize) -> TauriRe
 async fn search_file(query: String, offset: usize, limit: usize) -> TauriResult<Vec<SearchResultFile>> {
     tauri_spawn(async move {
         let indexer = Indexer::new()?;
-        Ok(indexer.search_file(&query, offset, limit)?)
+        indexer.search_file(&query, offset, limit)
     }).await
 }
 
@@ -123,14 +124,14 @@ async fn search_file(query: String, offset: usize, limit: usize) -> TauriResult<
 async fn search_item(query: String, offset: usize, limit: usize) -> TauriResult<Vec<SearchResultItem>> {
     tauri_spawn(async move {
         let indexer = Indexer::new()?;
-        Ok(indexer.search_item(&query, offset, limit)?)
+        indexer.search_item(&query, offset, limit)
     }).await
 }
 
 #[tauri::command]
 async fn get_index_dir_paths() -> TauriResult<Vec<String>> {
     tauri_spawn(async move {
-        Ok(Config::get_index_dir_paths()?)
+        Config::get_index_dir_paths()
     }).await
 }
 
@@ -174,9 +175,9 @@ pub fn run() {
         .spawn(|| {
             let worker = Worker::new().unwrap();
             Config::get_index_dir_paths().unwrap().iter().for_each(|path| {
-                info!("开始检查目录: {}", path);
+                info!("开始检查目录: {path}");
                 worker.submit_index_all_files(Path::new(path)).unwrap();
-            info!("目录检查完成: {}", path);
+            info!("目录检查完成: {path}");
         });
     }).unwrap();
 

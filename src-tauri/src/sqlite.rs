@@ -1,7 +1,7 @@
 use std::sync::{Arc, Mutex};
 
 use anyhow::{Context, Result, anyhow};
-use log::info;
+use log::{error, info};
 use once_cell::sync::OnceCell;
 use r2d2::{Pool, PooledConnection};
 use r2d2_sqlite::SqliteConnectionManager;
@@ -31,7 +31,7 @@ pub fn init_pool() {
 
 pub fn get_conn() -> Result<PooledConnection<SqliteConnectionManager>> {
     Ok(POOL.get().expect("Pool not initialized").lock().map_err(|e| {
-        log::error!("获取数据库连接失败: {:?}", e);
+        error!("获取数据库连接失败: {e:?}");
         anyhow::anyhow!("获取数据库连接失败")
     })?.as_ref().context("获取数据库连接as_ref失败")?.get()?)
 }
@@ -63,7 +63,7 @@ pub fn enable_auto_vacuum() -> Result<()> {
 }
 
 pub fn check_or_init_db() -> Result<()> {
-    if let Err(_) = check_db_init() {
+    if check_db_init().is_err() {
         let conn = get_conn()?;
         conn.execute_batch(
         r"PRAGMA journal_mode = WAL;

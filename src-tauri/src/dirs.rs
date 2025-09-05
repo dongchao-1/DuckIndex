@@ -10,7 +10,7 @@ const PROJECT_APPLICATION: &str = "DeepIndex";
 
 pub fn get_project_dirs() -> PathBuf {
     if let Ok(val) = env::var("DEEPINDEX_TEST_DIR") {
-        PathBuf::from(Path::new(&val).join("data"))
+        Path::new(&val).join("data")
     } else {
         ProjectDirs::from(PROJECT_QUALIFIER, PROJECT_ORGANIZATION, PROJECT_APPLICATION)
             .unwrap()
@@ -38,7 +38,7 @@ pub fn get_log_dir() -> PathBuf {
 #[cfg(test)]
 mod tests {
 
-    use crate::test::test::TestEnv;
+    use crate::test::test_mod::TestEnv;
 
     use super::*;
 

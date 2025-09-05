@@ -48,11 +48,11 @@ pub fn get_monitor() -> &'static Mutex<Monitor> {
                                     debug!("其他文件系统事件: {:?}", event.paths);
                                 },
                                 _ => {
-                                    debug!("未知的事件类型: {:?}", event);
+                                    debug!("未知的事件类型: {event:?}");
                                 }
                             }
                         },
-                        Err(e) => error!("监听错误: {:?}", e),
+                        Err(e) => error!("监听错误: {e:?}"),
                     }
                 }
             }).unwrap();

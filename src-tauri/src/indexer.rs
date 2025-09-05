@@ -115,7 +115,7 @@ impl Indexer {
         let directory_id = self.write_directory(parent_dir)?;
 
         let file_name = filename_to_str(file)?;
-        let modified_time = self.get_modified_time(&file)?;
+        let modified_time = self.get_modified_time(file)?;
 
         let mut conn = get_conn()?;
         let tx = conn.transaction()?;
@@ -216,8 +216,7 @@ impl Indexer {
         let conn = get_conn()?;
 
         let sql = format!(
-            "SELECT name, path, modified_time FROM directories WHERE name LIKE '%{}%' ORDER BY id LIMIT {} OFFSET {}",
-            content, limit, offset
+            "SELECT name, path, modified_time FROM directories WHERE name LIKE '%{content}%' ORDER BY id LIMIT {limit} OFFSET {offset}"
         );
         let mut stmt = conn.prepare(&sql)?;
         let rows = stmt.query_map([], |row| {
@@ -248,8 +247,7 @@ impl Indexer {
             FROM files
             left outer join directories
             on files.directory_id = directories.id
-            WHERE files.name LIKE '%{}%' ORDER BY files.id LIMIT {} OFFSET {}",
-            content, limit, offset
+            WHERE files.name LIKE '%{content}%' ORDER BY files.id LIMIT {limit} OFFSET {offset}"
         );
         let mut stmt = conn.prepare(&sql)?;
         let rows = stmt.query_map([], |row| {
@@ -280,8 +278,7 @@ impl Indexer {
             FROM items
             LEFT OUTER JOIN files ON items.file_id = files.id
             LEFT OUTER JOIN directories ON files.directory_id = directories.id
-            WHERE items.content LIKE '%{}%' ORDER BY items.id LIMIT {} OFFSET {}",
-            content, limit, offset
+            WHERE items.content LIKE '%{content}%' ORDER BY items.id LIMIT {limit} OFFSET {offset}"
         );
         let mut stmt = conn.prepare(&sql)?;
         let rows = stmt.query_map([], |row| {
@@ -320,10 +317,10 @@ impl Indexer {
     }
 
     pub fn delete_directory(&self, directory: &Path) -> Result<()> {
-        self.check_is_absolute(&directory)?;
+        self.check_is_absolute(directory)?;
 
         debug!("查找子目录和文件: {}", directory.display());
-        let (sub_dirs, files) = self.get_sub_directories_and_files(&directory)?;
+        let (sub_dirs, files) = self.get_sub_directories_and_files(directory)?;
 
         for file in files {
             info!("删除文件: {}", file.name);
@@ -359,7 +356,7 @@ impl Indexer {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test::test::TestEnv;
+    use crate::test::test_mod::TestEnv;
 
     const TEST_DATA_DIR: &str = "../test_data/indexer";
 
