@@ -58,56 +58,6 @@ pub struct TaskStatusStat {
 }
 
 impl Worker {
-    pub fn check_or_init() -> Result<()> {
-        if let Err(_) = Self::check_worker_init() {
-            Self::reset_worker()?;
-        }
-        Ok(())
-    }
-
-    fn check_worker_init() -> Result<()> {
-        let conn = get_conn()?;
-        let row = conn
-            .query_one("select version from worker_version", [], |row| {
-                row.get::<_, String>(0)
-            })
-            .map_err(|e| anyhow!("Worker not initialized: {}", e))?;
-
-        if row != "0.1" {
-            return Err(anyhow!(
-                "Worker version mismatch: expected 0.1, found {}",
-                row
-            ));
-        }
-        Ok(())
-    }
-
-    fn reset_worker() -> Result<()> {
-        let conn = get_conn()?;
-        conn.execute_batch(
-            r"
-            DROP TABLE IF EXISTS tasks;
-            CREATE TABLE tasks (
-                id INTEGER PRIMARY KEY,
-                type TEXT NOT NULL,
-                path TEXT NOT NULL,
-                status TEXT NOT NULL,
-                worker TEXT,
-                created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL,
-                UNIQUE (type, path)
-            );
-            CREATE INDEX idx_tasks_status ON tasks (status);
-            DROP TABLE IF EXISTS worker_version;
-            CREATE TABLE worker_version (
-                version TEXT
-            );
-            INSERT INTO worker_version (version) VALUES ('0.1');
-        ",
-        )?;
-        Ok(())
-    }
-
     pub fn reset_running_tasks() -> Result<()> {
         let conn = get_conn()?;
         conn.execute(

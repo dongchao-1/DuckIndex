@@ -53,21 +53,5 @@ fn main() {
         fs::copy(&src_path, &dest_path).expect(&format!("Failed to copy {} to {}", src_path.display(), dest_path.display()));
     }
 
-    let tesseract_data_path = Path::new("./tessdata");
-    let datas_to_copy = [
-        "eng.traineddata",
-        "chi_sim.traineddata",
-    ];
-
-
-    let target_dir = target_dir.join("tessdata");
-    for data_name in &datas_to_copy {
-        let src_path = tesseract_data_path.join(data_name);
-        // 直接复制到 target/debug 或 target/release 目录
-        let dest_path = target_dir.join(data_name);
-        fs::create_dir_all(&target_dir).expect(&format!("Failed to create directory {}", target_dir.display()));
-        fs::copy(&src_path, &dest_path).expect(&format!("Failed to copy {} to {}", src_path.display(), dest_path.display()));
-    }
-
     tauri_build::build()
 }

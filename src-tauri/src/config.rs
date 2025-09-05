@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use serde::{Deserialize, Serialize};
 
 use crate::sqlite::get_conn;
@@ -7,53 +7,6 @@ use crate::sqlite::get_conn;
 pub struct Config {}
 
 impl Config {
-    pub fn check_or_init() -> Result<()> {
-        if let Err(_) = Self::check_config_init() {
-            Self::reset_config()?;
-        }
-        Ok(())
-    }
-
-    fn check_config_init() -> Result<()> {
-        let conn = get_conn()?;
-        let row = conn
-            .query_one("select version from config_version", [], |row| {
-                row.get::<_, String>(0)
-            })
-            .map_err(|e| anyhow!("Config not initialized: {}", e))?;
-
-        if row != "0.1" {
-            return Err(anyhow!(
-                "Config version mismatch: expected 0.1, found {}",
-                row
-            ));
-        }
-        Ok(())
-    }
-
-    fn reset_config() -> Result<()> {
-        let conn = get_conn()?;
-        conn.execute_batch(
-            r"
-            DROP TABLE IF EXISTS config;
-            CREATE TABLE config (
-                id INTEGER PRIMARY KEY,
-                key TEXT NOT NULL,
-                value TEXT NOT NULL,
-                unique (key)
-            );
-            INSERT INTO config (key, value) VALUES ('index_dir_paths', '[]');
-
-            DROP TABLE IF EXISTS config_version;
-            CREATE TABLE config_version (
-                version TEXT
-            );
-            INSERT INTO config_version (version) VALUES ('0.1');
-        ",
-        )?;
-        Ok(())
-    }
-
     pub fn get_index_dir_paths() -> Result<Vec<String>> {
         let conn = get_conn()?;
         let index_dir_paths: String = conn.query_one(

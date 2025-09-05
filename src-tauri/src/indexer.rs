@@ -5,7 +5,6 @@ use rusqlite::params;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, MAIN_SEPARATOR};
-use rusqlite::Error as RusqliteError;
 
 use crate::reader::Item;
 use crate::sqlite::get_conn;
@@ -42,72 +41,6 @@ pub struct IndexStatusStat {
 pub struct Indexer {}
 
 impl Indexer {
-    pub fn check_or_init() -> Result<()> {
-        if let Err(_) = Self::check_indexer_init() {
-            Self::reset_indexer()?;
-        }
-        Ok(())
-    }
-
-    fn check_indexer_init() -> Result<()> {
-        let conn = get_conn()?;
-        let row = conn
-            .query_one("select version from indexer_version", [], |row| {
-                row.get::<_, String>(0)
-            })
-            .map_err(|e| anyhow!("Indexer not initialized: {}", e))?;
-
-        if row != "0.1" {
-            return Err(anyhow!(
-                "Indexer version mismatch: expected 0.1, found {}",
-                row
-            ));
-        }
-        Ok(())
-    }
-
-    fn reset_indexer() -> Result<()> {
-        let conn = get_conn()?;
-        conn.execute_batch(
-            r"
-            DROP TABLE IF EXISTS directories;
-            CREATE TABLE directories (
-                id INTEGER PRIMARY KEY,
-                name TEXT NOT NULL,
-                path TEXT NOT NULL,
-                modified_time TEXT NOT NULL,
-                UNIQUE (path)
-            );
-            CREATE INDEX idx_directories_name ON directories (name);
-
-            DROP TABLE IF EXISTS files;
-            CREATE TABLE files (
-                id INTEGER PRIMARY KEY,
-                directory_id INTEGER NOT NULL,
-                name TEXT NOT NULL,
-                modified_time TEXT NOT NULL,
-                UNIQUE (directory_id, name)
-            );
-            CREATE INDEX idx_files_name ON files (name);
-
-            DROP TABLE IF EXISTS items;
-            CREATE TABLE items (
-                id INTEGER PRIMARY KEY,
-                file_id INTEGER NOT NULL,
-                content TEXT NOT NULL
-            );
-            CREATE INDEX idx_items_file_id ON items (file_id);
-
-            DROP TABLE IF EXISTS indexer_version;
-            CREATE TABLE indexer_version (
-                version TEXT
-            );
-            INSERT INTO indexer_version (version) VALUES ('0.1');
-        ",
-        )?;
-        Ok(())
-    }
-
     pub fn new() -> Result<Self> {
         Ok(Indexer {})
     }
@@ -371,29 +304,16 @@ impl Indexer {
         let directory_path = parent_to_str(file)?;
         let mut conn = get_conn()?;
         let tx = conn.transaction()?;
-        let file_id: Result<i64, rusqlite::Error> = tx.query_row(
-            "SELECT id FROM files WHERE name = ?1 and directory_id in (SELECT id FROM directories WHERE path = ?2)",
-            params![file_name, &directory_path],
-            |row| row.get(0),
-        );
-        let file_id = match file_id {
-            Err(e) => {
-                match e {
-                    RusqliteError::QueryReturnedNoRows => {
-                        return Ok(());
-                    }
-                    _ => return Err(e.into()),
-                }
-            }
-            Ok(id) => id,
-        };
 
         tx.execute(
-            "DELETE FROM items WHERE file_id = ?1",
-            params![&file_id],
+            r"DELETE FROM items WHERE file_id in 
+            (SELECT id FROM files WHERE name = ?1 and directory_id in (SELECT id FROM directories WHERE path = ?2))",
+            params![&file_name, &directory_path],
         )?;
 
-        tx.execute("DELETE FROM files WHERE id = ?1", params![&file_id])?;
+        tx.execute(r"DELETE FROM files WHERE name = ?1 
+            and directory_id in (SELECT id FROM directories WHERE path = ?2)", 
+            params![&file_name, &directory_path])?;
         tx.commit()?;
 
         Ok(())
@@ -442,12 +362,6 @@ mod tests {
     use crate::test::test::TestEnv;
 
     const TEST_DATA_DIR: &str = "../test_data/indexer";
-
-    #[test]
-    fn test_reset_index() {
-        let _env = TestEnv::new();
-        Indexer::reset_indexer().unwrap();
-    }
 
     #[test]
     fn test_get_index() {

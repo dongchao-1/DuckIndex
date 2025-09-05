@@ -17,7 +17,6 @@ pub mod test {
         
         pub fn new_with_cleanup(auto_cleanup: bool) -> Self {
             let temp_dir;
-            // 格式化时间，例如 "2025-08-28_08-53-25"
             let now = Local::now().format("%Y-%m-%d_%H-%M-%S").to_string();
             let dir_name = format!(".deepindex_test_{}_", now);
             if auto_cleanup {

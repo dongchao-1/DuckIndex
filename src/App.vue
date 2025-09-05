@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from "vue";
+import { ref, onMounted } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import { Window } from '@tauri-apps/api/window';
 import { open } from '@tauri-apps/plugin-dialog';
@@ -20,15 +20,29 @@ const directories = ref(0);
 const files = ref(0);
 const items = ref(0);
 
-mainWindow.listen("status-update", ({ payload }: { event: string; payload: any }) => {
-  pending.value = payload.task_status_stat.pending;
-  running.value = payload.task_status_stat.running;
-  running_tasks.value = payload.task_status_stat.running_tasks.join('<br>');
-
-  directories.value = payload.index_status_stat.directories;
-  files.value = payload.index_status_stat.files;
-  items.value = payload.index_status_stat.items;
+onMounted(() => {
+  pollStatusEverySecond();
 });
+
+function pollStatusEverySecond() {
+  async function poll() {
+    try {
+      const status: any = await invoke('get_status', {});
+      // console.log(status);
+      pending.value = status.task_status_stat.pending;
+      running.value = status.task_status_stat.running;
+      running_tasks.value = status.task_status_stat.running_tasks.join('<br>');
+
+      directories.value = status.index_status_stat.directories;
+      files.value = status.index_status_stat.files;
+      items.value = status.index_status_stat.items;
+    } catch (e) {
+      console.error('获取状态失败', e);
+    }
+    setTimeout(poll, 1000);
+  }
+  poll();
+}
 
 // 搜索
 const content = ref("");
@@ -181,6 +195,8 @@ async function handleDelIndexPathClick(path: string) {
   try {
     await invoke("del_index_path", {path});
     await refreshIndexPathTableData();
+  } catch (e) {
+    console.error("del_index_path异常:", e);
   } finally {
     configIndexPathLoading.value = false;
   }
@@ -205,7 +221,9 @@ async function handleAddIndexPathClick() {
         const result = await invoke("add_index_path", { path: selected });
         console.log("Indexing result:", result);
         await refreshIndexPathTableData();
-      } finally {
+      } catch (e) {
+        console.error("add_index_path异常:", e);
+      }  finally {
         configIndexPathLoading.value = false;
       }
       ElMessage({
@@ -268,7 +286,7 @@ async function handleAddIndexPathClick() {
               :data="tableData" 
               style="width: 100%"
               v-loading="configIndexPathLoading"
-              element-loading-text="加载索引路径中..."
+              element-loading-text="处理中，请稍后..."
             >
               <el-table-column prop="path" label="路径"/>
               <el-table-column fixed="right" label="操作" width="100">
