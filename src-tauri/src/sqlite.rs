@@ -1,6 +1,6 @@
 use std::sync::{Arc, Mutex};
 
-use anyhow::{Context, Result, anyhow};
+use anyhow::{anyhow, Context, Result};
 use log::{error, info};
 use once_cell::sync::OnceCell;
 use r2d2::{Pool, PooledConnection};
@@ -17,29 +17,36 @@ pub fn init_pool() {
         let sqlite_path = get_index_dir().join("index.db");
 
         let manager = SqliteConnectionManager::file(sqlite_path).with_init(|conn| {
-            conn.execute_batch(
-                r"PRAGMA busy_timeout = 2147483647;",
-            )?;
+            conn.execute_batch(r"PRAGMA busy_timeout = 2147483647;")?;
 
             conn.busy_handler(Some(|_retries| true))?;
 
             Ok(())
         });
-        Arc::new(Mutex::new(Some(Pool::new(manager).expect("Failed to create pool"))))
+        Arc::new(Mutex::new(Some(
+            Pool::new(manager).expect("Failed to create pool"),
+        )))
     });
 }
 
 pub fn get_conn() -> Result<PooledConnection<SqliteConnectionManager>> {
-    Ok(POOL.get().expect("Pool not initialized").lock().map_err(|e| {
-        error!("获取数据库连接失败: {e:?}");
-        anyhow::anyhow!("获取数据库连接失败")
-    })?.as_ref().context("获取数据库连接as_ref失败")?.get()?)
+    Ok(POOL
+        .get()
+        .expect("Pool not initialized")
+        .lock()
+        .map_err(|e| {
+            error!("获取数据库连接失败: {e:?}");
+            anyhow::anyhow!("获取数据库连接失败")
+        })?
+        .as_ref()
+        .context("获取数据库连接as_ref失败")?
+        .get()?)
 }
 
 pub fn close_pool() {
     info!("关闭连接池...");
     enable_auto_vacuum().unwrap();
-    
+
     if let Some(pool_arc) = POOL.get() {
         if let Ok(mut pool_option_lock) = pool_arc.lock() {
             let pool_option = pool_option_lock.take();
@@ -66,7 +73,7 @@ pub fn check_or_init_db() -> Result<()> {
     if check_db_init().is_err() {
         let conn = get_conn()?;
         conn.execute_batch(
-        r"PRAGMA journal_mode = WAL;
+            r"PRAGMA journal_mode = WAL;
             PRAGMA auto_vacuum = FULL;
 
             -- config.rs
@@ -126,7 +133,7 @@ pub fn check_or_init_db() -> Result<()> {
                 version TEXT
             );
             INSERT INTO db_version (version) VALUES ('0.1');
-            "
+            ",
         )?;
     }
     Ok(())

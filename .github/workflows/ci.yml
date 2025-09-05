@@ -90,6 +90,14 @@ jobs:
           TESSERACT_LINK_PATHS: ${{ github.workspace }}/vcpkg/installed/x64-windows/lib
           TESSERACT_LINK_LIBS: tesseract55
 
+      # 运行 Clippy 代码检查
+      - name: Run Clippy
+        run: cargo clippy --manifest-path ./src-tauri/Cargo.toml --all-targets --all-features -- -D warnings
+
+      # 运行代码格式检查
+      - name: Check Rust code formatting
+        run: cargo fmt --manifest-path ./src-tauri/Cargo.toml --check
+
       # 使用 Tauri 构建整个应用
       - name: Build Tauri app
         run: pnpm tauri build

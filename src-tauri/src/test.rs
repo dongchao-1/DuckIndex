@@ -1,9 +1,9 @@
 #[cfg(test)]
 pub mod test_mod {
-    use std::env;
-    use chrono::Local;
-    use tempfile::Builder;
     use crate::{setup_backend, sqlite::close_pool};
+    use chrono::Local;
+    use std::env;
+    use tempfile::Builder;
 
     pub struct TestEnv {
         #[allow(dead_code)]
@@ -14,15 +14,12 @@ pub mod test_mod {
         pub fn new() -> Self {
             Self::new_with_cleanup(true)
         }
-        
+
         pub fn new_with_cleanup(auto_cleanup: bool) -> Self {
             let now = Local::now().format("%Y-%m-%d_%H-%M-%S").to_string();
             let dir_name = format!(".deepindex_test_{now}_");
             let temp_dir = if auto_cleanup {
-                Builder::new()
-                    .prefix(&dir_name)
-                    .tempdir()
-                    .unwrap()
+                Builder::new().prefix(&dir_name).tempdir().unwrap()
             } else {
                 Builder::new()
                     .prefix(&dir_name)

@@ -1,10 +1,10 @@
 use ::log::info;
+use anyhow::Result;
 use serde::Serialize;
-use tauri::{RunEvent, async_runtime};
 use std::future::Future;
 use std::path::Path;
 use std::thread;
-use anyhow::Result;
+use tauri::{async_runtime, RunEvent};
 use thiserror::Error;
 
 use crate::config::Config;
@@ -16,9 +16,11 @@ use crate::indexer::SearchResultItem;
 use crate::log::init_logger;
 use crate::monitor::add_watched_path;
 use crate::monitor::del_watched_path;
-use crate::sqlite::{init_pool, close_pool, enable_auto_vacuum, disable_auto_vacuum, check_or_init_db};
-use crate::worker::{TaskStatusStat, Worker};
 use crate::monitor::get_monitor;
+use crate::sqlite::{
+    check_or_init_db, close_pool, disable_auto_vacuum, enable_auto_vacuum, init_pool,
+};
+use crate::worker::{TaskStatusStat, Worker};
 
 mod config;
 mod dirs;
@@ -27,10 +29,10 @@ mod log;
 mod reader;
 mod sqlite;
 // mod indexer_tantivy;
-mod test;
-mod worker;
 mod monitor;
+mod test;
 mod utils;
+mod worker;
 
 #[derive(Debug, Error)]
 pub enum TauriError {
@@ -79,7 +81,8 @@ async fn add_index_path(path: String) -> TauriResult<()> {
         Config::set_index_dir_paths(paths)?;
 
         Ok(())
-    }).await
+    })
+    .await
 }
 
 #[tauri::command]
@@ -101,38 +104,52 @@ async fn del_index_path(path: String) -> TauriResult<()> {
         Config::set_index_dir_paths(paths)?;
 
         Ok(())
-    }).await
+    })
+    .await
 }
 
 #[tauri::command]
-async fn search_directory(query: String, offset: usize, limit: usize) -> TauriResult<Vec<SearchResultDirectory>> {
+async fn search_directory(
+    query: String,
+    offset: usize,
+    limit: usize,
+) -> TauriResult<Vec<SearchResultDirectory>> {
     tauri_spawn(async move {
         let indexer = Indexer::new()?;
         indexer.search_directory(&query, offset, limit)
-    }).await
+    })
+    .await
 }
 
 #[tauri::command]
-async fn search_file(query: String, offset: usize, limit: usize) -> TauriResult<Vec<SearchResultFile>> {
+async fn search_file(
+    query: String,
+    offset: usize,
+    limit: usize,
+) -> TauriResult<Vec<SearchResultFile>> {
     tauri_spawn(async move {
         let indexer = Indexer::new()?;
         indexer.search_file(&query, offset, limit)
-    }).await
+    })
+    .await
 }
 
 #[tauri::command]
-async fn search_item(query: String, offset: usize, limit: usize) -> TauriResult<Vec<SearchResultItem>> {
+async fn search_item(
+    query: String,
+    offset: usize,
+    limit: usize,
+) -> TauriResult<Vec<SearchResultItem>> {
     tauri_spawn(async move {
         let indexer = Indexer::new()?;
         indexer.search_item(&query, offset, limit)
-    }).await
+    })
+    .await
 }
 
 #[tauri::command]
 async fn get_index_dir_paths() -> TauriResult<Vec<String>> {
-    tauri_spawn(async move {
-        Config::get_index_dir_paths()
-    }).await
+    tauri_spawn(async move { Config::get_index_dir_paths() }).await
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -153,9 +170,9 @@ async fn get_status() -> TauriResult<TotalStatus> {
             task_status_stat,
             index_status_stat,
         })
-    }).await
+    })
+    .await
 }
-
 
 pub fn setup_backend() {
     init_logger();
@@ -174,12 +191,16 @@ pub fn run() {
         .name("initial-check-index-dir-paths".to_string())
         .spawn(|| {
             let worker = Worker::new().unwrap();
-            Config::get_index_dir_paths().unwrap().iter().for_each(|path| {
-                info!("开始检查目录: {path}");
-                worker.submit_index_all_files(Path::new(path)).unwrap();
-            info!("目录检查完成: {path}");
-        });
-    }).unwrap();
+            Config::get_index_dir_paths()
+                .unwrap()
+                .iter()
+                .for_each(|path| {
+                    info!("开始检查目录: {path}");
+                    worker.submit_index_all_files(Path::new(path)).unwrap();
+                    info!("目录检查完成: {path}");
+                });
+        })
+        .unwrap();
 
     info!("启动后台变更监听");
     get_monitor();

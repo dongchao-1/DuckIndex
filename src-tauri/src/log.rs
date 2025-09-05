@@ -60,14 +60,10 @@ pub fn init_logger() {
             log4rs::config::Logger::builder()
                 .appender("appender")
                 .additive(false)
-                .build("lopdf", LevelFilter::Error)
+                .build("lopdf", LevelFilter::Error),
         )
         // Root logger 为你的应用设置环境变量指定的级别
-        .build(
-            Root::builder()
-                .appender("appender")
-                .build(level_filter)
-        )
+        .build(Root::builder().appender("appender").build(level_filter))
         .unwrap();
 
     log4rs::init_config(log_config).unwrap();

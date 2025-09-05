@@ -1,5 +1,5 @@
+use anyhow::{Context, Result};
 use std::path::Path;
-use anyhow::{Result, Context};
 
 pub fn path_to_str(path: &Path) -> Result<&str> {
     path.to_str()
@@ -15,7 +15,17 @@ pub fn filename_to_str(path: &Path) -> Result<&str> {
 
 pub fn parent_to_str(path: &Path) -> Result<&str> {
     path.parent()
-        .with_context(|| format!("Failed to get parent directory from path: {}", path.display()))?
+        .with_context(|| {
+            format!(
+                "Failed to get parent directory from path: {}",
+                path.display()
+            )
+        })?
         .to_str()
-        .with_context(|| format!("Failed to convert parent directory to string: {}", path.display()))
+        .with_context(|| {
+            format!(
+                "Failed to convert parent directory to string: {}",
+                path.display()
+            )
+        })
 }

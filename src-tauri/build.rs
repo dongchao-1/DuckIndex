@@ -49,8 +49,15 @@ fn main() {
         let src_path = tesseract_bin_path.join(dll_name);
         // 直接复制到 target/debug 或 target/release 目录
         let dest_path = target_dir.join(dll_name);
-        fs::create_dir_all(&target_dir).unwrap_or_else(|_| panic!("Failed to create directory {}", target_dir.display()));
-        fs::copy(&src_path, &dest_path).unwrap_or_else(|_| panic!("Failed to copy {} to {}", src_path.display(), dest_path.display()));
+        fs::create_dir_all(&target_dir)
+            .unwrap_or_else(|_| panic!("Failed to create directory {}", target_dir.display()));
+        fs::copy(&src_path, &dest_path).unwrap_or_else(|_| {
+            panic!(
+                "Failed to copy {} to {}",
+                src_path.display(),
+                dest_path.display()
+            )
+        });
     }
 
     tauri_build::build()

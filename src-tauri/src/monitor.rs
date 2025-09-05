@@ -1,10 +1,10 @@
-use std::thread;
+use anyhow::Result;
 use log::{debug, error, info};
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 use once_cell::sync::OnceCell;
-use std::{path::Path, sync::mpsc};
 use std::sync::Mutex;
-use anyhow::Result;
+use std::thread;
+use std::{path::Path, sync::mpsc};
 
 use crate::config::Config;
 use crate::Worker;
@@ -21,9 +21,14 @@ pub fn get_monitor() -> &'static Mutex<Monitor> {
         let (tx, rx) = mpsc::channel();
         let mut watcher = notify::recommended_watcher(tx).unwrap();
 
-        Config::get_index_dir_paths().unwrap().iter().for_each(|path| {
-            watcher.watch(Path::new(path), RecursiveMode::Recursive).unwrap();
-        });
+        Config::get_index_dir_paths()
+            .unwrap()
+            .iter()
+            .for_each(|path| {
+                watcher
+                    .watch(Path::new(path), RecursiveMode::Recursive)
+                    .unwrap();
+            });
 
         thread::Builder::new()
             .name("file-monitor".into())
@@ -33,37 +38,45 @@ pub fn get_monitor() -> &'static Mutex<Monitor> {
                     match res {
                         Ok(event) => {
                             match event.kind {
-                                notify::EventKind::Create(_) | notify::EventKind::Modify(_) | notify::EventKind::Remove(_) => {
+                                notify::EventKind::Create(_)
+                                | notify::EventKind::Modify(_)
+                                | notify::EventKind::Remove(_) => {
                                     for path in &event.paths {
                                         debug!("文件被变更: {:?}, {}", event.kind, path.display());
                                         if let Err(e) = worker.submit_index_all_files(path) {
-                                            error!("提交索引任务失败: {}, 错误: {:?}", path.display(), e);
+                                            error!(
+                                                "提交索引任务失败: {}, 错误: {:?}",
+                                                path.display(),
+                                                e
+                                            );
                                         }
                                     }
-                                },
+                                }
                                 notify::EventKind::Access(_) => {
                                     // 访问事件不需要重新索引
-                                },
+                                }
                                 notify::EventKind::Other => {
                                     debug!("其他文件系统事件: {:?}", event.paths);
-                                },
+                                }
                                 _ => {
                                     debug!("未知的事件类型: {event:?}");
                                 }
                             }
-                        },
+                        }
                         Err(e) => error!("监听错误: {e:?}"),
                     }
                 }
-            }).unwrap();
+            })
+            .unwrap();
 
-        Mutex::new(Monitor{watcher})
+        Mutex::new(Monitor { watcher })
     })
 }
 
 pub fn add_watched_path(new_path: &Path) -> Result<()> {
     info!("设置新的监听路径: {}", new_path.display());
-    let mut monitor = get_monitor().lock()
+    let mut monitor = get_monitor()
+        .lock()
         .map_err(|e| anyhow::anyhow!("Failed to acquire monitor lock: {}", e))?;
 
     monitor.watcher.watch(new_path, RecursiveMode::Recursive)?;
@@ -72,7 +85,8 @@ pub fn add_watched_path(new_path: &Path) -> Result<()> {
 
 pub fn del_watched_path(old_path: &Path) -> Result<()> {
     info!("删除旧的监听路径: {}", old_path.display());
-    let mut monitor = get_monitor().lock()
+    let mut monitor = get_monitor()
+        .lock()
         .map_err(|e| anyhow::anyhow!("Failed to acquire monitor lock: {}", e))?;
 
     monitor.watcher.unwatch(old_path)?;

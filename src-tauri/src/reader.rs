@@ -10,8 +10,8 @@ use std::path::Path;
 use std::sync::Arc;
 use std::{fs, vec};
 use tempfile::TempDir;
-use zip::ZipArchive;
 use tesseract::Tesseract;
+use zip::ZipArchive;
 
 #[derive(Debug)]
 pub struct Item {
@@ -77,9 +77,10 @@ impl CompositeReader {
         if self.is_hidden(file)? {
             return Ok(false);
         }
-        
+
         if let Some(ext) = file.extension() {
-            let ext_str = ext.to_str()
+            let ext_str = ext
+                .to_str()
                 .with_context(|| format!("Invalid extension in file: {file:?}"))?
                 .to_lowercase();
             return Ok(self.supports_ext.contains(&ext_str));
@@ -89,7 +90,8 @@ impl CompositeReader {
 
     pub fn read(&self, file_path: &Path) -> Result<Vec<Item>> {
         if let Some(ext) = file_path.extension() {
-            let ext_str = ext.to_str()
+            let ext_str = ext
+                .to_str()
                 .with_context(|| format!("Invalid extension in file: {file_path:?}"))?
                 .to_lowercase();
             if let Some(reader) = self.reader_map.get(&ext_str) {
@@ -114,9 +116,7 @@ impl Reader for TxtReader {
 
         for line in reader.lines() {
             let line = line?;
-            items.push(Item {
-                content: line,
-            });
+            items.push(Item { content: line });
         }
         Ok(items)
     }
@@ -245,7 +245,8 @@ impl Reader for XlsxReader {
         let mut items = vec![];
 
         // TODO 也有数据存在 sheet?.xml 中，需要读取
-        let reader = BufReader::new(File::open(document_path).context("xl/sharedStrings.xml 不存在")?);
+        let reader =
+            BufReader::new(File::open(document_path).context("xl/sharedStrings.xml 不存在")?);
         let mut xml_reader = quickXmlReader::from_reader(reader);
         let mut buf = Vec::new();
         let mut current_text = String::new();
@@ -254,38 +255,34 @@ impl Reader for XlsxReader {
 
         loop {
             match xml_reader.read_event_into(&mut buf)? {
-                quickXmlEvent::Start(e) => {
-                    match e.name().as_ref() {
-                        b"si" => {
-                            in_si = true;
-                            current_text.clear();
-                        }
-                        b"t" if in_si => {
-                            in_text = true;
-                        }
-                        _ => {}
+                quickXmlEvent::Start(e) => match e.name().as_ref() {
+                    b"si" => {
+                        in_si = true;
+                        current_text.clear();
                     }
-                }
+                    b"t" if in_si => {
+                        in_text = true;
+                    }
+                    _ => {}
+                },
                 quickXmlEvent::Text(e) if in_text => {
                     current_text.push_str(&e.decode()?);
                 }
-                quickXmlEvent::End(e) => {
-                    match e.name().as_ref() {
-                        b"si" => {
-                            if in_si && !current_text.trim().is_empty() {
-                                items.push(Item {
-                                    content: current_text.trim().to_string(),
-                                });
-                            }
-                            in_si = false;
-                            current_text.clear();
+                quickXmlEvent::End(e) => match e.name().as_ref() {
+                    b"si" => {
+                        if in_si && !current_text.trim().is_empty() {
+                            items.push(Item {
+                                content: current_text.trim().to_string(),
+                            });
                         }
-                        b"t" => {
-                            in_text = false;
-                        }
-                        _ => {}
+                        in_si = false;
+                        current_text.clear();
                     }
-                }
+                    b"t" => {
+                        in_text = false;
+                    }
+                    _ => {}
+                },
                 quickXmlEvent::Eof => break,
                 _ => {}
             }
@@ -323,19 +320,12 @@ impl Reader for PdfReader {
 
         for (i, line) in lines.iter().enumerate() {
             result.push_str(line);
-            if i < lines.len() - 1
-                && line
-                    .chars()
-                    .last()
-                    .is_some_and(|c| c.is_ascii_alphabetic())
-                {
-                    result.push(' ');
-                }
+            if i < lines.len() - 1 && line.chars().last().is_some_and(|c| c.is_ascii_alphabetic()) {
+                result.push(' ');
+            }
         }
 
-        items.push(Item {
-            content: result,
-        });
+        items.push(Item { content: result });
         Ok(items)
     }
 
@@ -355,10 +345,13 @@ impl Reader for OcrReader {
 
         let text = tess.set_image_from_mem(&image_data)?.get_text()?;
 
-        let items = text.split("\n")
+        let items = text
+            .split("\n")
             .filter(|line| !line.trim().is_empty())
             .map(|line| self.remove_whitespace_for_chinese_chars(line))
-            .map(|line| Item { content: line.to_string() })
+            .map(|line| Item {
+                content: line.to_string(),
+            })
             .collect();
         Ok(items)
     }
@@ -394,7 +387,6 @@ impl OcrReader {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -404,14 +396,18 @@ mod tests {
     #[test]
     fn test_composite_reader() {
         let reader = CompositeReader::new().unwrap();
-        let items = reader.read(&Path::new(TEST_DATA_DIR).join("test.txt")).unwrap();
+        let items = reader
+            .read(&Path::new(TEST_DATA_DIR).join("test.txt"))
+            .unwrap();
         assert_eq!(items.len(), 4);
     }
 
     #[test]
     fn test_composite_unknown_extension() {
         let reader = CompositeReader::new().unwrap();
-        let result = reader.read(&Path::new(TEST_DATA_DIR).join("test.xyz")).unwrap();
+        let result = reader
+            .read(&Path::new(TEST_DATA_DIR).join("test.xyz"))
+            .unwrap();
         assert_eq!(result.len(), 0);
     }
 
@@ -419,7 +415,9 @@ mod tests {
     fn test_txt_reader() {
         let reader = TxtReader;
         assert_eq!(reader.supports(), vec!["txt", "md", "markdown"]);
-        let items = reader.read(&Path::new(TEST_DATA_DIR).join("test.txt")).unwrap();
+        let items = reader
+            .read(&Path::new(TEST_DATA_DIR).join("test.txt"))
+            .unwrap();
         assert_eq!(items.len(), 4);
     }
 
@@ -449,7 +447,9 @@ mod tests {
     fn test_pdf_reader() {
         let reader = PdfReader;
         assert_eq!(reader.supports(), vec!["pdf"]);
-        let items = reader.read(&Path::new(TEST_DATA_DIR).join("test.pdf")).unwrap();
+        let items = reader
+            .read(&Path::new(TEST_DATA_DIR).join("test.pdf"))
+            .unwrap();
         // println!("Items: {:?}", items);
         assert_eq!(items.len(), 1);
     }
@@ -458,40 +458,55 @@ mod tests {
     fn test_xlsx_reader() {
         let reader = XlsxReader;
         assert_eq!(reader.supports(), vec!["xlsx"]);
-        
+
         let xlsx_path = Path::new(TEST_DATA_DIR).join("office/test.xlsx");
         let items = reader.read(&xlsx_path).unwrap();
         // println!("XLSX Items: {:?}", items);
         assert_eq!(items.len(), 7);
     }
 
-
     #[test]
     fn test_ocr_reader() {
         const TEST_DATA_PIC_DIR: &str = "../test_data/reader/pic";
 
         let reader = OcrReader;
-        assert_eq!(reader.supports(), vec!["jpg", "jpeg", "png", "tif", "tiff", "gif", "webp"]);
+        assert_eq!(
+            reader.supports(),
+            vec!["jpg", "jpeg", "png", "tif", "tiff", "gif", "webp"]
+        );
 
-        let items = reader.read(&Path::new(TEST_DATA_PIC_DIR).join("test.jpg")).unwrap();
+        let items = reader
+            .read(&Path::new(TEST_DATA_PIC_DIR).join("test.jpg"))
+            .unwrap();
         // println!("OCR Items: {:?}", items);
         assert_eq!(items.len(), 6);
-        let items = reader.read(&Path::new(TEST_DATA_PIC_DIR).join("test.jpeg")).unwrap();
+        let items = reader
+            .read(&Path::new(TEST_DATA_PIC_DIR).join("test.jpeg"))
+            .unwrap();
         assert_eq!(items.len(), 6);
 
-        let items = reader.read(&Path::new(TEST_DATA_PIC_DIR).join("test.png")).unwrap();
+        let items = reader
+            .read(&Path::new(TEST_DATA_PIC_DIR).join("test.png"))
+            .unwrap();
         assert_eq!(items.len(), 6);
 
-        let items = reader.read(&Path::new(TEST_DATA_PIC_DIR).join("test.tif")).unwrap();
+        let items = reader
+            .read(&Path::new(TEST_DATA_PIC_DIR).join("test.tif"))
+            .unwrap();
         assert_eq!(items.len(), 6);
-        let items = reader.read(&Path::new(TEST_DATA_PIC_DIR).join("test.tiff")).unwrap();
+        let items = reader
+            .read(&Path::new(TEST_DATA_PIC_DIR).join("test.tiff"))
+            .unwrap();
         assert_eq!(items.len(), 6);
 
-        let items = reader.read(&Path::new(TEST_DATA_PIC_DIR).join("test.gif")).unwrap();
+        let items = reader
+            .read(&Path::new(TEST_DATA_PIC_DIR).join("test.gif"))
+            .unwrap();
         assert_eq!(items.len(), 6);
 
-        let items = reader.read(&Path::new(TEST_DATA_PIC_DIR).join("test.webp")).unwrap();
+        let items = reader
+            .read(&Path::new(TEST_DATA_PIC_DIR).join("test.webp"))
+            .unwrap();
         assert_eq!(items.len(), 6);
     }
-
 }

@@ -111,7 +111,12 @@ impl Indexer {
 
     pub fn write_file_items(&self, file: &Path, items: Vec<Item>) -> Result<i64> {
         self.check_is_absolute(file)?;
-        let parent_dir = file.parent().with_context(|| format!("Failed to get parent directory from file: {}", file.display()))?;
+        let parent_dir = file.parent().with_context(|| {
+            format!(
+                "Failed to get parent directory from file: {}",
+                file.display()
+            )
+        })?;
         let directory_id = self.write_directory(parent_dir)?;
 
         let file_name = filename_to_str(file)?;
@@ -127,8 +132,7 @@ impl Indexer {
         // println!("write_file_items File ID: {}", file_id);
 
         for chunk in items.chunks(1000) {
-            let mut query =
-                String::from("INSERT INTO items (file_id, content) VALUES ");
+            let mut query = String::from("INSERT INTO items (file_id, content) VALUES ");
 
             // 构建 VALUES 部分 (?, ?, ?, ?), (?, ?, ?, ?), ...
             let values: Vec<String> = (0..chunk.len())
@@ -168,14 +172,18 @@ impl Indexer {
             "SELECT name, path, modified_time FROM directories WHERE path LIKE ?1 AND path NOT LIKE ?2",
         )?;
         let rows = stmt.query_map(
-            params![format!("{}{}%", dir_path, MAIN_SEPARATOR), format!("{}{}%{}%", dir_path, MAIN_SEPARATOR, MAIN_SEPARATOR)],
+            params![
+                format!("{}{}%", dir_path, MAIN_SEPARATOR),
+                format!("{}{}%{}%", dir_path, MAIN_SEPARATOR, MAIN_SEPARATOR)
+            ],
             |row| {
-            Ok(SearchResultDirectory {
-                name: row.get(0)?,
-                path: row.get(1)?,
-                modified_time: row.get(2)?,
-            })
-        })?;
+                Ok(SearchResultDirectory {
+                    name: row.get(0)?,
+                    path: row.get(1)?,
+                    modified_time: row.get(2)?,
+                })
+            },
+        )?;
 
         for row in rows {
             dirs.push(row?);
@@ -188,16 +196,13 @@ impl Indexer {
             ON files.directory_id = directories.id
             WHERE directories.path = ?1",
         )?;
-        let rows = stmt.query_map(
-            params![dir_path],
-            |row| {
-                Ok(SearchResultFile {
-                    name: row.get(0)?,
-                    path: row.get(1)?,
-                    modified_time: row.get(2)?,
-                })
-            },
-        )?;
+        let rows = stmt.query_map(params![dir_path], |row| {
+            Ok(SearchResultFile {
+                name: row.get(0)?,
+                path: row.get(1)?,
+                modified_time: row.get(2)?,
+            })
+        })?;
 
         for row in rows {
             files.push(row?);
@@ -308,9 +313,11 @@ impl Indexer {
             params![&file_name, &directory_path],
         )?;
 
-        tx.execute(r"DELETE FROM files WHERE name = ?1 
-            and directory_id in (SELECT id FROM directories WHERE path = ?2)", 
-            params![&file_name, &directory_path])?;
+        tx.execute(
+            r"DELETE FROM files WHERE name = ?1 
+            and directory_id in (SELECT id FROM directories WHERE path = ?2)",
+            params![&file_name, &directory_path],
+        )?;
         tx.commit()?;
 
         Ok(())
@@ -342,9 +349,12 @@ impl Indexer {
 
     pub fn get_index_status(&self) -> Result<IndexStatusStat> {
         let conn = get_conn()?;
-        let total_directories: i64 = conn.query_one("SELECT COUNT(*) FROM directories", [], |row| row.get(0))?;
-        let total_files: i64 = conn.query_one("SELECT COUNT(*) FROM files", [], |row| row.get(0))?;
-        let indexed_files: i64 = conn.query_one("SELECT COUNT(*) FROM items", [], |row| row.get(0))?;
+        let total_directories: i64 =
+            conn.query_one("SELECT COUNT(*) FROM directories", [], |row| row.get(0))?;
+        let total_files: i64 =
+            conn.query_one("SELECT COUNT(*) FROM files", [], |row| row.get(0))?;
+        let indexed_files: i64 =
+            conn.query_one("SELECT COUNT(*) FROM items", [], |row| row.get(0))?;
         Ok(IndexStatusStat {
             directories: total_directories as usize,
             files: total_files as usize,
@@ -391,7 +401,10 @@ mod tests {
         let _env = TestEnv::new();
         let indexer = Indexer::new().unwrap();
 
-        let file = Path::new(TEST_DATA_DIR).join("1.txt").canonicalize().unwrap();
+        let file = Path::new(TEST_DATA_DIR)
+            .join("1.txt")
+            .canonicalize()
+            .unwrap();
         indexer.write_directory(file.parent().unwrap()).unwrap();
 
         let items = vec![
@@ -410,7 +423,10 @@ mod tests {
         let _env = TestEnv::new();
         let indexer = Indexer::new().unwrap();
 
-        let file = Path::new(TEST_DATA_DIR).join("1.txt").canonicalize().unwrap();
+        let file = Path::new(TEST_DATA_DIR)
+            .join("1.txt")
+            .canonicalize()
+            .unwrap();
         indexer.write_directory(file.parent().unwrap()).unwrap();
 
         let items = vec![
@@ -433,7 +449,10 @@ mod tests {
         let _env = TestEnv::new();
         let indexer = Indexer::new().unwrap();
 
-        let file = Path::new(TEST_DATA_DIR).join("1.txt").canonicalize().unwrap();
+        let file = Path::new(TEST_DATA_DIR)
+            .join("1.txt")
+            .canonicalize()
+            .unwrap();
         indexer.write_directory(file.parent().unwrap()).unwrap();
 
         let items = vec![
@@ -446,7 +465,10 @@ mod tests {
         ];
         indexer.write_file_items(&file, items).unwrap();
 
-        let sub_dir_path = Path::new(TEST_DATA_DIR).join("office").canonicalize().unwrap();
+        let sub_dir_path = Path::new(TEST_DATA_DIR)
+            .join("office")
+            .canonicalize()
+            .unwrap();
         indexer.write_directory(&sub_dir_path).unwrap();
 
         let (dir_result, file_result) = indexer
@@ -483,7 +505,10 @@ mod tests {
                 content: "This is a test.".into(),
             },
         ];
-        let file = Path::new(TEST_DATA_DIR).join("1.txt").canonicalize().unwrap();
+        let file = Path::new(TEST_DATA_DIR)
+            .join("1.txt")
+            .canonicalize()
+            .unwrap();
         indexer.write_directory(file.parent().unwrap()).unwrap();
         indexer.write_file_items(&file, items).unwrap();
 
@@ -508,7 +533,10 @@ mod tests {
                 content: "This is a test.".into(),
             },
         ];
-        let file = Path::new(TEST_DATA_DIR).join("1.txt").canonicalize().unwrap();
+        let file = Path::new(TEST_DATA_DIR)
+            .join("1.txt")
+            .canonicalize()
+            .unwrap();
         indexer.write_directory(file.parent().unwrap()).unwrap();
         indexer.write_file_items(&file, items).unwrap();
 
@@ -531,7 +559,10 @@ mod tests {
                 content: "This is a test.".into(),
             },
         ];
-        let file = Path::new(TEST_DATA_DIR).join("1.txt").canonicalize().unwrap();
+        let file = Path::new(TEST_DATA_DIR)
+            .join("1.txt")
+            .canonicalize()
+            .unwrap();
         indexer.write_directory(file.parent().unwrap()).unwrap();
         indexer.write_file_items(&file, items).unwrap();
 
@@ -544,7 +575,6 @@ mod tests {
         assert_eq!(file_result.len(), 0);
     }
 
-    
     #[test]
     fn test_delete_file_not_exists() {
         let _env = TestEnv::new();
@@ -557,11 +587,16 @@ mod tests {
                 content: "This is a test.".into(),
             },
         ];
-        let file = Path::new(TEST_DATA_DIR).join("1.txt").canonicalize().unwrap();
+        let file = Path::new(TEST_DATA_DIR)
+            .join("1.txt")
+            .canonicalize()
+            .unwrap();
         indexer.write_directory(file.parent().unwrap()).unwrap();
         indexer.write_file_items(&file, items).unwrap();
 
-        indexer.delete_file(&file.parent().unwrap().join("non_existent.txt")).unwrap();
+        indexer
+            .delete_file(&file.parent().unwrap().join("non_existent.txt"))
+            .unwrap();
     }
 
     #[test]
@@ -576,11 +611,19 @@ mod tests {
                 content: "This is a test.".into(),
             },
         ];
-        let file = Path::new(TEST_DATA_DIR).join("1.txt").canonicalize().unwrap();
+        let file = Path::new(TEST_DATA_DIR)
+            .join("1.txt")
+            .canonicalize()
+            .unwrap();
         indexer.write_directory(file.parent().unwrap()).unwrap();
         indexer.write_file_items(&file, items).unwrap();
         indexer
-            .write_directory(&Path::new(TEST_DATA_DIR).join("office").canonicalize().unwrap())
+            .write_directory(
+                &Path::new(TEST_DATA_DIR)
+                    .join("office")
+                    .canonicalize()
+                    .unwrap(),
+            )
             .unwrap();
 
         indexer.delete_directory(file.parent().unwrap()).unwrap();
@@ -591,7 +634,6 @@ mod tests {
         assert_eq!(dir_result.len(), 0);
         assert_eq!(file_result.len(), 0);
     }
-
 
     #[test]
     fn test_delete_directory_not_exists() {
@@ -605,14 +647,24 @@ mod tests {
                 content: "This is a test.".into(),
             },
         ];
-        let file = Path::new(TEST_DATA_DIR).join("1.txt").canonicalize().unwrap();
+        let file = Path::new(TEST_DATA_DIR)
+            .join("1.txt")
+            .canonicalize()
+            .unwrap();
         indexer.write_directory(file.parent().unwrap()).unwrap();
         indexer.write_file_items(&file, items).unwrap();
         indexer
-            .write_directory(&Path::new(TEST_DATA_DIR).join("office").canonicalize().unwrap())
+            .write_directory(
+                &Path::new(TEST_DATA_DIR)
+                    .join("office")
+                    .canonicalize()
+                    .unwrap(),
+            )
             .unwrap();
 
-        indexer.delete_directory(&file.parent().unwrap().join("not_exists_path")).unwrap();
+        indexer
+            .delete_directory(&file.parent().unwrap().join("not_exists_path"))
+            .unwrap();
     }
 
     #[test]
@@ -627,7 +679,10 @@ mod tests {
                 content: "This is a test.".into(),
             },
         ];
-        let file = Path::new(TEST_DATA_DIR).join("1.txt").canonicalize().unwrap();
+        let file = Path::new(TEST_DATA_DIR)
+            .join("1.txt")
+            .canonicalize()
+            .unwrap();
         indexer.write_directory(file.parent().unwrap()).unwrap();
         indexer.write_file_items(&file, items).unwrap();
 
@@ -636,5 +691,4 @@ mod tests {
         assert_eq!(result.files, 1);
         assert_eq!(result.items, 2);
     }
-
 }

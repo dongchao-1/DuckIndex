@@ -75,13 +75,20 @@ impl Worker {
         let indexer = Indexer::new()?;
         let reader = CompositeReader::new()?;
         let name = thread::current().name().unwrap_or("unknown").to_string();
-        Ok(Worker { indexer, reader, name })
+        Ok(Worker {
+            indexer,
+            reader,
+            name,
+        })
     }
 
     fn add_task(&self, task_type: &TaskType, path: &Path) -> Result<i64> {
         let conn = get_conn()?;
 
-        let path = path.to_str().with_context(|| format!("Invalid file path: {path:?}"))?.to_string();
+        let path = path
+            .to_str()
+            .with_context(|| format!("Invalid file path: {path:?}"))?
+            .to_string();
         let now = Local::now().to_rfc3339();
         let id = conn.query_one(
             r"INSERT INTO tasks (type, path, status, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5) ON CONFLICT(type, path) 
@@ -137,7 +144,8 @@ impl Worker {
                         // 目录修改了
                         let (index_sub_dirs, index_sub_files) =
                             self.indexer.get_sub_directories_and_files(path)?;
-                        let (current_sub_dirs, current_sub_files) = self.split_dir_contents(path)?;
+                        let (current_sub_dirs, current_sub_files) =
+                            self.split_dir_contents(path)?;
 
                         let index_sub_dirs = HashSet::from_iter(
                             index_sub_dirs
@@ -218,10 +226,14 @@ impl Worker {
 
     pub fn get_tasks_status(&self) -> Result<TaskStatusStat> {
         let conn = get_conn()?;
-        let (pending, running) = conn.query_one("SELECT COUNT(if(status = ?1, 1, NULL)), COUNT(if(status = ?2, 1, NULL)) FROM tasks", 
-            params![TaskStatus::Pending.to_string(), TaskStatus::Running.to_string()], |row| {
-                Ok((row.get(0)?, row.get(1)?))
-            })?;
+        let (pending, running) = conn.query_one(
+            "SELECT COUNT(if(status = ?1, 1, NULL)), COUNT(if(status = ?2, 1, NULL)) FROM tasks",
+            params![
+                TaskStatus::Pending.to_string(),
+                TaskStatus::Running.to_string()
+            ],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )?;
 
         let mut stmt = conn.prepare("SELECT path FROM tasks WHERE status = ?1")?;
         let paths = stmt.query_map(params![TaskStatus::Running.to_string()], |row| {
@@ -257,16 +269,17 @@ impl Worker {
                             }
                         }
                     }
-                }).unwrap();
+                })
+                .unwrap();
         }
         Ok(())
     }
 
     pub fn process_task(&self) -> Result<()> {
-
         let task = {
             let conn = get_conn()?;
-            let _lock = get_worker_lock().lock()
+            let _lock = get_worker_lock()
+                .lock()
                 .map_err(|e| anyhow!("获取worker锁失败: {}", e))?;
 
             conn.query_row(
@@ -299,11 +312,11 @@ impl Worker {
                 debug!("处理任务: {id}, {task_type}, {path}");
                 let path = Path::new(&path);
                 let task_type = TaskType::from_str(&task_type)?;
-                
+
                 // 重试机制：最多重试3次
                 let mut retry_count = 0;
                 let max_retries = 3;
-                
+
                 while retry_count < max_retries {
                     let result: Result<i64> = match task_type {
                         TaskType::Directory => {
@@ -316,19 +329,15 @@ impl Worker {
                         TaskType::File => {
                             if path.is_file() {
                                 match self.reader.read(path) {
-                                    Ok(items) => {
-                                        self.indexer.write_file_items(path, items)
-                                    },
-                                    Err(e) => {
-                                        Err(anyhow!("Read file failed: {}", e))
-                                    }
+                                    Ok(items) => self.indexer.write_file_items(path, items),
+                                    Err(e) => Err(anyhow!("Read file failed: {}", e)),
                                 }
                             } else {
                                 Err(anyhow!("File not found"))
                             }
                         }
                     };
-                    
+
                     match result {
                         Ok(_) => {
                             info!("任务处理成功: {id}, {task_type}, {}", path.display());
@@ -340,7 +349,10 @@ impl Worker {
                             error!("{}", e.backtrace());
                             if retry_count == max_retries {
                                 // 重试失败，只写入文件名
-                                error!("任务重试全部失败，只写入文件名: {id}, {task_type}, {}", path.display());
+                                error!(
+                                    "任务重试全部失败，只写入文件名: {id}, {task_type}, {}",
+                                    path.display()
+                                );
                                 self.indexer.write_file_items(path, Vec::new())?;
                                 break;
                             }
@@ -368,16 +380,15 @@ impl Worker {
 
 #[cfg(test)]
 mod tests {
-    use std::fs::{self, rename};
     use fs_extra::dir::{copy, CopyOptions};
     use fs_extra::file::write_all;
+    use std::fs::{self, rename};
 
     use super::*;
+    use crate::indexer::Indexer;
     use crate::test::test_mod::TestEnv;
     use crate::worker::Worker;
-    use crate::indexer::Indexer;
 
-    
     #[test]
     fn test_add_task() {
         let (_env, temp_test_data_worker) = prepare_test_data_worker();
@@ -465,14 +476,17 @@ mod tests {
         assert_eq!(indexer_status.files, 1);
     }
 
-    
     #[test]
     fn test_index_all_files_add_file() {
         let (_env, temp_test_data_worker) = prepare_test_data_worker();
         let worker = Worker::new().unwrap();
         let indexer = Indexer::new().unwrap();
 
-        write_all(temp_test_data_worker.join("test_index_all_files_add_file.txt"), "contents" ).unwrap();
+        write_all(
+            temp_test_data_worker.join("test_index_all_files_add_file.txt"),
+            "contents",
+        )
+        .unwrap();
         worker
             .submit_index_all_files(&temp_test_data_worker)
             .unwrap();
@@ -517,7 +531,13 @@ mod tests {
         let indexer = Indexer::new().unwrap();
 
         fs::create_dir_all(temp_test_data_worker.join("new_dir")).unwrap();
-        write_all(temp_test_data_worker.join("new_dir").join("test_index_all_files_add_file.txt"), "contents" ).unwrap();
+        write_all(
+            temp_test_data_worker
+                .join("new_dir")
+                .join("test_index_all_files_add_file.txt"),
+            "contents",
+        )
+        .unwrap();
         worker
             .submit_index_all_files(&temp_test_data_worker)
             .unwrap();
@@ -539,7 +559,7 @@ mod tests {
         let worker = Worker::new().unwrap();
         let indexer = Indexer::new().unwrap();
 
-        write_all(temp_test_data_worker.join("1.txt"), "contents" ).unwrap();
+        write_all(temp_test_data_worker.join("1.txt"), "contents").unwrap();
         worker
             .submit_index_all_files(&temp_test_data_worker)
             .unwrap();
@@ -559,7 +579,11 @@ mod tests {
         let worker = Worker::new().unwrap();
         let indexer = Indexer::new().unwrap();
 
-        rename(temp_test_data_worker.join("office"), temp_test_data_worker.join("new_office")).unwrap();
+        rename(
+            temp_test_data_worker.join("office"),
+            temp_test_data_worker.join("new_office"),
+        )
+        .unwrap();
         worker
             .submit_index_all_files(&temp_test_data_worker)
             .unwrap();

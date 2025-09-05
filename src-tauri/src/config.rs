@@ -25,7 +25,7 @@ impl Config {
             "update config set value = $1 where key = 'index_dir_paths'",
             [index_dir_paths_str],
         )?;
-        
+
         Ok(())
     }
 }
