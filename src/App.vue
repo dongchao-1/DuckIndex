@@ -3,7 +3,7 @@ import { ref, onMounted } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import { Window } from '@tauri-apps/api/window';
 import { open } from '@tauri-apps/plugin-dialog';
-import { ElMessage, ScrollbarDirection, TabsPaneContext } from "element-plus";
+import { ElMessage, TabsPaneContext } from "element-plus";
 import { revealItemInDir } from '@tauri-apps/plugin-opener';
 import { join } from '@tauri-apps/api/path';
 
@@ -36,6 +36,13 @@ function pollStatusEverySecond() {
       directories.value = status.index_status_stat.directories;
       files.value = status.index_status_stat.files;
       items.value = status.index_status_stat.items;
+
+      if (status.task_status_stat.pending != 0 || status.task_status_stat.running != 0) {
+        settingLoading.value = true;
+      } else {
+        settingLoading.value = false;
+      }
+
     } catch (e) {
       console.error('获取状态失败', e);
     }
@@ -99,7 +106,7 @@ const searchState = ref<Record<string, { loading: boolean; results: any[] }>>({
   item: { loading: false, results: [] }
 });
 
-const configIndexPathLoading = ref(false);
+const settingLoading = ref(false);
 
 // 统一搜索函数
 async function search() {
@@ -142,13 +149,22 @@ async function performSearch(searchType: SearchType) {
   }
 }
 
-// 统一的加载更多函数
-function createLoadMoreHandler(searchType: SearchType) {
-  return async (direction: ScrollbarDirection) => {
-    if (direction === 'bottom') {
+// 统一的滚动处理函数
+async function handleScroll(e: { scrollTop: number; scrollLeft: number }, searchType: SearchType) {
+  // 使用特定的类名找到对应的滚动容器
+  const scrollbar = document.querySelector(`.search-scrollbar-${searchType.key} .el-scrollbar__wrap`) as HTMLElement;
+  if (!scrollbar) return;
+
+  const scrollTop = e.scrollTop;
+  const clientHeight = scrollbar.clientHeight;
+  const scrollHeight = scrollbar.scrollHeight;
+
+  if (scrollHeight - scrollTop - clientHeight < 20) {
+    console.log("触发加载更多: ", searchType.key, { scrollTop, clientHeight, scrollHeight });
+    if (!searchState.value[searchType.key].loading) {
       await performSearch(searchType);
     }
-  };
+  }
 }
 
 
@@ -191,14 +207,11 @@ async function handleTabClick(pane: TabsPaneContext, _ev: Event) {
 
 async function handleDelIndexPathClick(path: string) {
   console.log('Delete index path clicked:', path);
-  configIndexPathLoading.value = true;
   try {
     await invoke("del_index_path", {path});
     await refreshIndexPathTableData();
   } catch (e) {
     console.error("del_index_path异常:", e);
-  } finally {
-    configIndexPathLoading.value = false;
   }
   ElMessage({
     message: '目录删除成功',
@@ -216,15 +229,12 @@ async function handleAddIndexPathClick() {
 
     if (selected != null) {
       console.log("Selected directory:", selected);
-      configIndexPathLoading.value = true;
       try {
         const result = await invoke("add_index_path", { path: selected });
         console.log("Indexing result:", result);
         await refreshIndexPathTableData();
       } catch (e) {
         console.error("add_index_path异常:", e);
-      }  finally {
-        configIndexPathLoading.value = false;
       }
       ElMessage({
         message: '目录添加成功',
@@ -258,8 +268,9 @@ async function handleAddIndexPathClick() {
               <el-col :span="8" v-for="searchType in searchTypes" :key="searchType.key">
                 <p>{{ searchType.title }}:</p>
                 <el-scrollbar 
-                  class="search-scrollbar" 
-                  @end-reached="createLoadMoreHandler(searchType)" 
+                  ref="scrollbarRef"
+                  :class="['search-scrollbar', `search-scrollbar-${searchType.key}`]"
+                  @scroll="(e) => handleScroll(e, searchType)"
                   style="width: 90%"
                   v-loading="searchState[searchType.key].loading"
                   element-loading-text="搜索中..."
@@ -280,23 +291,20 @@ async function handleAddIndexPathClick() {
           </el-tab-pane>
 
           <el-tab-pane label="设置">
-            <el-text class="mx-1">索引路径</el-text>
-            <el-button type="primary" @click="handleAddIndexPathClick">增加</el-button>
-            <el-table 
-              :data="tableData" 
-              style="width: 100%"
-              v-loading="configIndexPathLoading"
-              element-loading-text="处理中，请稍后..."
-            >
-              <el-table-column prop="path" label="路径"/>
-              <el-table-column fixed="right" label="操作" width="100">
-                <template #default="{ row }">
-                  <el-button link type="primary" size="small" @click="handleDelIndexPathClick(row.path)">
-                    删除
-                  </el-button>
-                </template>
-              </el-table-column>
-            </el-table>
+            <div v-loading="settingLoading" element-loading-text="正在索引中，请稍后修改设置...">
+              <el-text class="mx-1">索引路径</el-text>
+              <el-button type="primary" @click="handleAddIndexPathClick">增加</el-button>
+              <el-table :data="tableData" style="width: 100%">
+                <el-table-column prop="path" label="路径"/>
+                <el-table-column fixed="right" label="操作" width="100">
+                  <template #default="{ row }">
+                    <el-button link type="primary" size="small" @click="handleDelIndexPathClick(row.path)">
+                      删除
+                    </el-button>
+                  </template>
+                </el-table-column>
+              </el-table>
+            </div>
           </el-tab-pane>
         </el-tabs>
       </el-main>
@@ -318,13 +326,13 @@ async function handleAddIndexPathClick() {
             </el-tooltip>
           </el-col>
           <el-col :span="4">
-            <el-statistic title="索引目录" :value="directories" />
+            <el-statistic title="已索引目录" :value="directories" />
           </el-col>
           <el-col :span="4">
-            <el-statistic title="索引文件" :value="files" />
+            <el-statistic title="已索引文件" :value="files" />
           </el-col>
           <el-col :span="4">
-            <el-statistic title="索引内容" :value="items" />
+            <el-statistic title="已索引内容" :value="items" />
           </el-col>
         </el-row>
       </el-footer>
