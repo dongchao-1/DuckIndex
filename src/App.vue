@@ -108,15 +108,31 @@ const searchState = ref<Record<string, { loading: boolean; results: any[] }>>({
 
 const settingLoading = ref(false);
 
+// 防抖定时器
+let searchDebounceTimer: number | null = null;
+
 // 统一搜索函数
 async function search() {
-  // 清空所有结果
-  Object.keys(searchState.value).forEach(key => {
-    searchState.value[key].results = [];
-  });
+  if (searchDebounceTimer) {
+    clearTimeout(searchDebounceTimer);
+  }
   
-  // 并行执行所有搜索
-  await Promise.all(searchTypes.map(type => performSearch(type)));
+  if (!content.value.trim()) {
+    Object.keys(searchState.value).forEach(key => {
+      searchState.value[key].results = [];
+    });
+    return;
+  }
+  
+  // 设置新的防抖定时器，延迟执行搜索
+  searchDebounceTimer = setTimeout(async () => {
+    Object.keys(searchState.value).forEach(key => {
+      searchState.value[key].results = [];
+    });
+    
+    // 并行执行所有搜索
+    await Promise.all(searchTypes.map(type => performSearch(type)));
+  }, 500);
 }
 
 // 执行具体搜索
