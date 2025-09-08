@@ -45,7 +45,9 @@ pub fn get_conn() -> Result<PooledConnection<SqliteConnectionManager>> {
 
 pub fn close_pool() {
     info!("关闭连接池...");
-    enable_auto_vacuum().unwrap();
+    let conn = get_conn().expect("Failed to get connection");
+    conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);")
+        .expect("Failed to execute batch");
 
     if let Some(pool_arc) = POOL.get() {
         if let Ok(mut pool_option_lock) = pool_arc.lock() {
@@ -55,18 +57,6 @@ pub fn close_pool() {
             }
         }
     }
-}
-
-pub fn disable_auto_vacuum() -> Result<()> {
-    let conn = get_conn()?;
-    conn.execute_batch("PRAGMA auto_vacuum = NONE;")?;
-    Ok(())
-}
-
-pub fn enable_auto_vacuum() -> Result<()> {
-    let conn = get_conn()?;
-    conn.execute_batch("PRAGMA auto_vacuum = FULL; VACUUM; PRAGMA wal_checkpoint(TRUNCATE);")?;
-    Ok(())
 }
 
 pub fn check_or_init_db() -> Result<()> {
@@ -117,13 +107,14 @@ pub fn check_or_init_db() -> Result<()> {
             DROP TABLE IF EXISTS tasks;
             CREATE TABLE tasks (
                 id INTEGER PRIMARY KEY,
-                type TEXT NOT NULL,
+                path_type TEXT NOT NULL,
                 path TEXT NOT NULL,
+                task_type TEXT NOT NULL,
                 status TEXT NOT NULL,
                 worker TEXT,
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL,
-                UNIQUE (type, path)
+                UNIQUE (path_type, path)
             );
             CREATE INDEX idx_tasks_status ON tasks (status);
 

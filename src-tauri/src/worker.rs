@@ -36,6 +36,14 @@ pub struct Worker {
 
 #[derive(Debug, PartialEq, EnumString, Display)]
 enum TaskType {
+    #[strum(to_string = "Index")]
+    Index,
+    #[strum(to_string = "Delete")]
+    Delete,
+}
+
+#[derive(Debug, PartialEq, EnumString, Display)]
+enum PathType {
     #[strum(to_string = "Directory")]
     Directory,
     #[strum(to_string = "File")]
@@ -82,7 +90,7 @@ impl Worker {
         })
     }
 
-    fn add_task(&self, task_type: &TaskType, path: &Path) -> Result<i64> {
+    fn add_task(&self, path_type: &PathType, path: &Path, task_type: &TaskType) -> Result<i64> {
         let conn = get_conn()?;
 
         let path = path
@@ -91,11 +99,13 @@ impl Worker {
             .to_string();
         let now = Local::now().to_rfc3339();
         let id = conn.query_one(
-            r"INSERT INTO tasks (type, path, status, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5) ON CONFLICT(type, path) 
-                DO UPDATE SET updated_at = ?5 RETURNING id",
+            r"INSERT INTO tasks (path_type, path, task_type, status, created_at, updated_at) 
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6) ON CONFLICT(path_type, path) 
+                DO UPDATE SET updated_at = ?6 RETURNING id",
             params![
-                task_type.to_string(),
+                path_type.to_string(),
                 path,
+                task_type.to_string(),
                 TaskStatus::Pending.to_string(),
                 now,
                 now
@@ -103,7 +113,7 @@ impl Worker {
             |row| {
                 let id = row.get::<_, i64>(0)?;
                 Ok(id)
-            }
+            },
         )?;
         Ok(id)
     }
@@ -139,7 +149,7 @@ impl Worker {
                             index_dir.modified_time,
                             modified_time
                         );
-                        self.add_task(&TaskType::Directory, path)?;
+                        self.add_task(&PathType::Directory, path, &TaskType::Index)?;
                         info!("目录时间已更新。目录: {}", path.display());
                         // 目录修改了
                         let (index_sub_dirs, index_sub_files) =
@@ -176,7 +186,7 @@ impl Worker {
                 } else {
                     // 数据库中没有这个目录
                     info!("目录未索引，添加任务。目录: {}", path.display());
-                    self.add_task(&TaskType::Directory, path)?;
+                    self.add_task(&PathType::Directory, path, &TaskType::Index)?;
                 }
 
                 for entry in fs::read_dir(path)? {
@@ -197,12 +207,12 @@ impl Worker {
                                 );
                                 self.indexer.delete_file(&path)?;
                                 if self.reader.supports(&path)? {
-                                    self.add_task(&TaskType::File, &path)?;
+                                    self.add_task(&PathType::File, &path, &TaskType::Index)?;
                                 }
                             }
                         } else if self.reader.supports(&path)? {
                             info!("文件未索引，添加任务。文件: {}", path.display());
-                            self.add_task(&TaskType::File, &path)?;
+                            self.add_task(&PathType::File, &path, &TaskType::Index)?;
                         }
                     } else if path.is_dir() {
                         self.submit_index_all_files(&path)?;
@@ -213,7 +223,7 @@ impl Worker {
                 // TODO: 这里不判断文件类型，文件名都要索引，内容在process时候在判断
                 if self.reader.supports(path)? {
                     info!("添加文件索引任务。文件: {}", path.display());
-                    self.add_task(&TaskType::File, path)?;
+                    self.add_task(&PathType::File, path, &TaskType::Index)?;
                 }
             }
         } else {
@@ -221,6 +231,11 @@ impl Worker {
             self.indexer.delete_directory(path)?;
             self.indexer.delete_file(path)?;
         }
+        Ok(())
+    }
+
+    pub fn submit_delete_all_files(&self, path: &Path) -> Result<()> {
+        self.add_task(&PathType::Directory, path, &TaskType::Delete)?;
         Ok(())
     }
 
@@ -291,7 +306,7 @@ impl Worker {
                     ORDER BY id
                     LIMIT 1
                 )
-                RETURNING id, type, path",
+                RETURNING id, path_type, path, task_type",
                 params![
                     TaskStatus::Running.to_string(),
                     Local::now().to_rfc3339(),
@@ -300,17 +315,19 @@ impl Worker {
                 ],
                 |row| {
                     let id = row.get::<_, i64>(0)?;
-                    let task_type = row.get::<_, String>(1)?;
+                    let path_type = row.get::<_, String>(1)?;
                     let path = row.get::<_, String>(2)?;
-                    Ok((id, task_type, path))
+                    let task_type = row.get::<_, String>(3)?;
+                    Ok((id, path_type, path, task_type))
                 },
             )
         };
 
         match task {
-            Ok((id, task_type, path)) => {
-                debug!("处理任务: {id}, {task_type}, {path}");
+            Ok((id, path_type, path, task_type)) => {
+                debug!("处理任务: {id}, {path_type}, {path}, {task_type}");
                 let path = Path::new(&path);
+                let path_type = PathType::from_str(&path_type)?;
                 let task_type = TaskType::from_str(&task_type)?;
 
                 // 重试机制：最多重试3次
@@ -318,39 +335,49 @@ impl Worker {
                 let max_retries = 3;
 
                 while retry_count < max_retries {
-                    let result: Result<i64> = match task_type {
-                        TaskType::Directory => {
-                            if path.is_dir() {
-                                self.indexer.write_directory(path)
-                            } else {
-                                Err(anyhow!("Directory not found"))
-                            }
-                        }
-                        TaskType::File => {
-                            if path.is_file() {
-                                match self.reader.read(path) {
-                                    Ok(items) => self.indexer.write_file_items(path, items),
-                                    Err(e) => Err(anyhow!("Read file failed: {}", e)),
+                    let result: Result<()> = match task_type {
+                        TaskType::Index => match path_type {
+                            PathType::Directory => {
+                                if path.is_dir() {
+                                    let _ = self.indexer.write_directory(path);
+                                    Ok(())
+                                } else {
+                                    Err(anyhow!("Directory not found"))
                                 }
-                            } else {
-                                Err(anyhow!("File not found"))
                             }
-                        }
+                            PathType::File => {
+                                if path.is_file() {
+                                    match self.reader.read(path) {
+                                        Ok(items) => {
+                                            let _ = self.indexer.write_file_items(path, items);
+                                            Ok(())
+                                        }
+                                        Err(e) => Err(anyhow!("Read file failed: {}", e)),
+                                    }
+                                } else {
+                                    Err(anyhow!("File not found"))
+                                }
+                            }
+                        },
+                        TaskType::Delete => match path_type {
+                            PathType::Directory => self.indexer.delete_directory(path),
+                            PathType::File => self.indexer.delete_file(path),
+                        },
                     };
 
                     match result {
                         Ok(_) => {
-                            info!("任务处理成功: {id}, {task_type}, {}", path.display());
+                            info!("任务处理成功: {id}, {path_type}, {}", path.display());
                             break;
                         }
                         Err(e) => {
                             retry_count += 1;
-                            error!("任务处理失败: {id}, {task_type}, {}, {e}", path.display());
+                            error!("任务处理失败: {id}, {path_type}, {}, {e}", path.display());
                             error!("{}", e.backtrace());
                             if retry_count == max_retries {
                                 // 重试失败，只写入文件名
                                 error!(
-                                    "任务重试全部失败，只写入文件名: {id}, {task_type}, {}",
+                                    "任务重试全部失败，只写入文件名: {id}, {path_type}, {}",
                                     path.display()
                                 );
                                 self.indexer.write_file_items(path, Vec::new())?;
@@ -359,7 +386,7 @@ impl Worker {
                         }
                     }
                 }
-                debug!("处理任务完成: {}, {}, {}", id, task_type, path.display());
+                debug!("处理任务完成: {}, {}, {}", id, path_type, path.display());
                 let conn = get_conn()?;
                 conn.execute("delete from tasks where id = ?", params![id])?;
             }
@@ -394,11 +421,15 @@ mod tests {
         let (_env, temp_test_data_worker) = prepare_test_data_worker();
         let worker = Worker::new().unwrap();
 
-        let task_type = TaskType::Directory;
+        let path_type = PathType::Directory;
         let path = temp_test_data_worker.join("office");
 
-        let id = worker.add_task(&task_type, &path).unwrap();
-        let id2 = worker.add_task(&task_type, &path).unwrap();
+        let id = worker
+            .add_task(&path_type, &path, &TaskType::Index)
+            .unwrap();
+        let id2 = worker
+            .add_task(&path_type, &path, &TaskType::Index)
+            .unwrap();
         assert_eq!(id, id2);
     }
 
@@ -645,5 +676,29 @@ mod tests {
         assert_eq!(status.pending, 0);
         assert_eq!(status.running, 0);
         assert_eq!(status.running_tasks, Vec::<String>::new());
+    }
+
+    #[test]
+    fn test_del_all_files() {
+        let (_env, temp_test_data_worker) = prepare_test_data_worker();
+        let worker = Worker::new().unwrap();
+        worker
+            .submit_delete_all_files(&temp_test_data_worker)
+            .unwrap();
+        let indexer = Indexer::new().unwrap();
+        let indexer_status = indexer.get_index_status().unwrap();
+        assert_eq!(indexer_status.directories, 2);
+        assert_eq!(indexer_status.files, 2);
+
+        worker.process_task().unwrap();
+        let status = worker.get_tasks_status().unwrap();
+        assert_eq!(status.pending, 0);
+        assert_eq!(status.running, 0);
+        assert_eq!(status.running_tasks, Vec::<String>::new());
+
+        let indexer_status = indexer.get_index_status().unwrap();
+        assert_eq!(indexer_status.directories, 0);
+        assert_eq!(indexer_status.files, 0);
+        assert_eq!(indexer_status.items, 0);
     }
 }
