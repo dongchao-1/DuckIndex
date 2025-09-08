@@ -93,10 +93,34 @@ jobs:
       # 运行 Clippy 代码检查
       - name: Run Clippy
         run: cargo clippy --manifest-path ./src-tauri/Cargo.toml --all-targets --all-features -- -D warnings
+        env:
+          # 添加 vcpkg bin 目录到 PATH，用于运行时找到 DLL
+          TESSERACT_BIN_PATH: ${{ github.workspace }}/vcpkg/installed/x64-windows/bin
+          # 设置 libclang 路径
+          LIBCLANG_PATH: ${{ github.workspace }}/llvm/lib
+          # 设置 tesseract 相关环境变量
+          LEPTONICA_INCLUDE_PATH: ${{ github.workspace }}/vcpkg/installed/x64-windows/include
+          LEPTONICA_LINK_PATHS: ${{ github.workspace }}/vcpkg/installed/x64-windows/lib
+          LEPTONICA_LINK_LIBS: leptonica-1.85.0
+          TESSERACT_INCLUDE_PATHS: ${{ github.workspace }}/vcpkg/installed/x64-windows/include
+          TESSERACT_LINK_PATHS: ${{ github.workspace }}/vcpkg/installed/x64-windows/lib
+          TESSERACT_LINK_LIBS: tesseract55
 
       # 运行代码格式检查
       - name: Check Rust code formatting
         run: cargo fmt --manifest-path ./src-tauri/Cargo.toml --check
+        env:
+          # 添加 vcpkg bin 目录到 PATH，用于运行时找到 DLL
+          TESSERACT_BIN_PATH: ${{ github.workspace }}/vcpkg/installed/x64-windows/bin
+          # 设置 libclang 路径
+          LIBCLANG_PATH: ${{ github.workspace }}/llvm/lib
+          # 设置 tesseract 相关环境变量
+          LEPTONICA_INCLUDE_PATH: ${{ github.workspace }}/vcpkg/installed/x64-windows/include
+          LEPTONICA_LINK_PATHS: ${{ github.workspace }}/vcpkg/installed/x64-windows/lib
+          LEPTONICA_LINK_LIBS: leptonica-1.85.0
+          TESSERACT_INCLUDE_PATHS: ${{ github.workspace }}/vcpkg/installed/x64-windows/include
+          TESSERACT_LINK_PATHS: ${{ github.workspace }}/vcpkg/installed/x64-windows/lib
+          TESSERACT_LINK_LIBS: tesseract55
 
       # 使用 Tauri 构建整个应用
       - name: Build Tauri app
