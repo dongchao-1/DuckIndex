@@ -1,0 +1,102 @@
+[env]
+RUSTFLAGS = "-Ctarget-feature=+crt-static"
+TESSERACT_BIN_PATH = "${CARGO_MAKE_WORKING_DIRECTORY}/vcpkg/installed/x64-windows/bin"
+LEPTONICA_INCLUDE_PATH = "${CARGO_MAKE_WORKING_DIRECTORY}/vcpkg/installed/x64-windows/include"
+LEPTONICA_LINK_PATHS = "${CARGO_MAKE_WORKING_DIRECTORY}/vcpkg/installed/x64-windows/lib"
+LEPTONICA_LINK_LIBS = "leptonica-1.85.0"
+TESSERACT_INCLUDE_PATHS = "${CARGO_MAKE_WORKING_DIRECTORY}/vcpkg/installed/x64-windows/include"
+TESSERACT_LINK_PATHS = "${CARGO_MAKE_WORKING_DIRECTORY}/vcpkg/installed/x64-windows/lib"
+TESSERACT_LINK_LIBS = "tesseract55"
+RUST_BACKTRACE = 1
+
+[tasks.install-vcpkg]
+description = "Clone并安装vcpkg"
+script = [
+    'if not exist vcpkg ( git clone https://github.com/microsoft/vcpkg.git )',
+    'pushd vcpkg',
+    '.\\bootstrap-vcpkg.bat',
+    'popd'
+]
+
+[tasks.install-tesseract]
+description = "安装Tesseract"
+script = [
+    'pushd vcpkg',
+    '.\\vcpkg.exe install tesseract:x64-windows',
+    'popd'
+]
+dependencies = ["install-vcpkg"]
+
+[tasks.install-cargo-nextest]
+description = "安装Cargo Nextest"
+command = "cargo"
+args = ["install", "cargo-nextest", "--locked"]
+
+[tasks.pnpm-install]
+description = "安装前端依赖"
+command = "powershell.exe"
+args = ["-Command", "pnpm install"]
+
+[tasks.build]
+command = "cargo"
+args = ["build", "--manifest-path", "./src-tauri/Cargo.toml"]
+
+[tasks.test]
+command = "cargo"
+args = ["nextest", "run", "--manifest-path", "./src-tauri/Cargo.toml"]
+dependencies = ["install-cargo-nextest"]
+
+[tasks.clippy]
+command = "cargo"
+args = ["clippy", "--manifest-path", "./src-tauri/Cargo.toml", "--all-targets", "--all-features", "--", "-D", "warnings"]
+
+[tasks.format]
+command = "cargo"
+args = ["fmt", "--manifest-path", "./src-tauri/Cargo.toml"]
+
+[tasks.clean-cargo]
+command = "cargo"
+args = ["clean", "--manifest-path", "./src-tauri/Cargo.toml"]
+
+[tasks.clean-vcpkg]
+command = "powershell.exe"
+args = ["-Command", "try { Remove-Item -Recurse -Force -ErrorAction SilentlyContinue vcpkg } finally { exit 0 }"]
+
+[tasks.clean-pnpm]
+command = "powershell.exe"
+args = ["-Command", "try { Remove-Item -Recurse -Force -ErrorAction SilentlyContinue node_modules, dist } finally { exit 0 }"]
+
+[tasks.dev]
+command = "powershell.exe"
+args = ["-Command", "pnpm tauri dev"]
+
+[tasks.release]
+command = "powershell.exe"
+args = ["-Command", "pnpm tauri build"]
+
+[tasks.install]
+description = "安装所有依赖"
+dependencies = ["install-vcpkg",
+    "install-tesseract",
+    "install-cargo-nextest",
+    "pnpm-install"
+]
+
+[tasks.check]
+description = "执行test clippy format"
+dependencies = [
+    "test",
+    "clippy",
+    "format"
+]
+# 禁用默认的 check 行为
+clear = true
+
+[tasks.clean]
+description = "清理所有依赖"
+dependencies = ["clean-cargo",
+    "clean-pnpm",
+    "clean-vcpkg"
+]
+# 禁用默认的 clean 行为
+clear = true

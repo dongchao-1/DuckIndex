@@ -20,69 +20,34 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: '22'
 
       - name: Install pnpm
         uses: pnpm/action-setup@v4
         with:
-          version: 8
+          version: 10
 
-      - name: Install frontend dependencies
-        run: pnpm install
-
-      # 安装 LLVM (包含 libclang)
       - name: Install LLVM
         uses: KyleMayes/install-llvm-action@v2
         with:
           version: "20.1.4"
           directory: ${{ github.workspace }}/llvm
 
-      # 设置和缓存 vcpkg，这一步会下载 vcpkg 并缓存依赖
-      - name: Setup vcpkg and cache
-        uses: lukka/run-vcpkg@v11
-        with:
-          # 使用一个固定的 Git commit ID，确保构建的可重复性
-          vcpkgGitCommitId: 'dd3097e305afa53f7b4312371f62058d2e665320'
-          runVcpkgInstall: false
-
-      # 缓存 vcpkg tesseract 包
-      - name: Cache vcpkg tesseract
-        uses: actions/cache@v4
-        with:
-          path: |
-            vcpkg/installed/x64-windows/
-          key: ${{ runner.os }}-vcpkg-tesseract-20250829-x64-windows
-
-      # 运行 vcpkg 安装 tesseract 及其依赖
-      - name: Install tesseract with vcpkg
+      - name: Install cargo-make and cargo-nextest
         run: |
-          if (!(Test-Path "vcpkg/installed/x64-windows")) {
-            vcpkg install tesseract:x64-windows
-          } else {
-            Write-Host "tesseract already installed, skipping"
-          }
+          cargo install cargo-make
+          cargo install cargo-nextest
+
+      - name: Run install
+        run: |
+          cargo make install
+
+      - name: Run check
+        run: |
+          cargo make check
         env:
-          VCPKG_ROOT: ${{ github.workspace }}/vcpkg # 设置 vcpkg 根目录环境变量
-
-      # 安装 cargo-nextest
-      - name: Install cargo-nextest
-        run: |
-          cargo install cargo-nextest --locked
-          cargo --version
-          cargo nextest --version
-
-      # 运行测试
-      - name: Run tests
-        run: |
-          echo "Current PATH: $env:PATH"
-          cargo --version
-          cargo nextest run --manifest-path ./src-tauri/Cargo.toml
-        env:
-          # 添加 vcpkg bin 目录到 PATH，用于运行时找到 DLL
           TESSERACT_BIN_PATH: ${{ github.workspace }}/vcpkg/installed/x64-windows/bin
-          # 设置 libclang 路径
           LIBCLANG_PATH: ${{ github.workspace }}/llvm/lib
-          # 设置 tesseract 相关环境变量
           LEPTONICA_INCLUDE_PATH: ${{ github.workspace }}/vcpkg/installed/x64-windows/include
           LEPTONICA_LINK_PATHS: ${{ github.workspace }}/vcpkg/installed/x64-windows/lib
           LEPTONICA_LINK_LIBS: leptonica-1.85.0
@@ -90,50 +55,11 @@ jobs:
           TESSERACT_LINK_PATHS: ${{ github.workspace }}/vcpkg/installed/x64-windows/lib
           TESSERACT_LINK_LIBS: tesseract55
 
-      # 运行 Clippy 代码检查
-      - name: Run Clippy
-        run: cargo clippy --manifest-path ./src-tauri/Cargo.toml --all-targets --all-features -- -D warnings
+      - name: Run release
+        run: cargo make release
         env:
-          # 添加 vcpkg bin 目录到 PATH，用于运行时找到 DLL
           TESSERACT_BIN_PATH: ${{ github.workspace }}/vcpkg/installed/x64-windows/bin
-          # 设置 libclang 路径
           LIBCLANG_PATH: ${{ github.workspace }}/llvm/lib
-          # 设置 tesseract 相关环境变量
-          LEPTONICA_INCLUDE_PATH: ${{ github.workspace }}/vcpkg/installed/x64-windows/include
-          LEPTONICA_LINK_PATHS: ${{ github.workspace }}/vcpkg/installed/x64-windows/lib
-          LEPTONICA_LINK_LIBS: leptonica-1.85.0
-          TESSERACT_INCLUDE_PATHS: ${{ github.workspace }}/vcpkg/installed/x64-windows/include
-          TESSERACT_LINK_PATHS: ${{ github.workspace }}/vcpkg/installed/x64-windows/lib
-          TESSERACT_LINK_LIBS: tesseract55
-
-      # 运行代码格式检查
-      - name: Check Rust code formatting
-        run: cargo fmt --manifest-path ./src-tauri/Cargo.toml --check
-        env:
-          # 添加 vcpkg bin 目录到 PATH，用于运行时找到 DLL
-          TESSERACT_BIN_PATH: ${{ github.workspace }}/vcpkg/installed/x64-windows/bin
-          # 设置 libclang 路径
-          LIBCLANG_PATH: ${{ github.workspace }}/llvm/lib
-          # 设置 tesseract 相关环境变量
-          LEPTONICA_INCLUDE_PATH: ${{ github.workspace }}/vcpkg/installed/x64-windows/include
-          LEPTONICA_LINK_PATHS: ${{ github.workspace }}/vcpkg/installed/x64-windows/lib
-          LEPTONICA_LINK_LIBS: leptonica-1.85.0
-          TESSERACT_INCLUDE_PATHS: ${{ github.workspace }}/vcpkg/installed/x64-windows/include
-          TESSERACT_LINK_PATHS: ${{ github.workspace }}/vcpkg/installed/x64-windows/lib
-          TESSERACT_LINK_LIBS: tesseract55
-
-      # 使用 Tauri 构建整个应用
-      - name: Build Tauri app
-        run: pnpm tauri build
-        env:
-          # 添加 vcpkg bin 目录到 PATH，用于运行时找到 DLL
-          TESSERACT_BIN_PATH: ${{ github.workspace }}/vcpkg/installed/x64-windows/bin
-          VCPKG_ROOT: ${{ github.workspace }}/vcpkg
-          # 告诉 Cargo 如何找到 vcpkg 工具链文件
-          VCPKG_TOOLCHAIN_FILE: ${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake
-          # 设置 libclang 路径
-          LIBCLANG_PATH: ${{ github.workspace }}/llvm/lib
-          # 设置 tesseract 相关环境变量
           LEPTONICA_INCLUDE_PATH: ${{ github.workspace }}/vcpkg/installed/x64-windows/include
           LEPTONICA_LINK_PATHS: ${{ github.workspace }}/vcpkg/installed/x64-windows/lib
           LEPTONICA_LINK_LIBS: leptonica-1.85.0
