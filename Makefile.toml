@@ -14,7 +14,7 @@ description = "Clone并安装vcpkg"
 script = [
     'if not exist vcpkg ( git clone https://github.com/microsoft/vcpkg.git )',
     'pushd vcpkg',
-    '.\\bootstrap-vcpkg.bat',
+    './bootstrap-vcpkg.bat',
     'popd'
 ]
 
@@ -22,7 +22,7 @@ script = [
 description = "安装Tesseract"
 script = [
     'pushd vcpkg',
-    '.\\vcpkg.exe install tesseract:x64-windows',
+    './vcpkg.exe install tesseract:x64-windows',
     'popd'
 ]
 dependencies = ["install-vcpkg"]
@@ -54,6 +54,11 @@ args = ["clippy", "--manifest-path", "./src-tauri/Cargo.toml", "--all-targets", 
 command = "cargo"
 args = ["fmt", "--manifest-path", "./src-tauri/Cargo.toml"]
 
+[tasks.format-check]
+description = "检查代码格式（不修改文件）"
+command = "cargo"
+args = ["fmt", "--manifest-path", "./src-tauri/Cargo.toml", "--check"]
+
 [tasks.clean-cargo]
 command = "cargo"
 args = ["clean", "--manifest-path", "./src-tauri/Cargo.toml"]
@@ -83,11 +88,11 @@ dependencies = ["install-vcpkg",
 ]
 
 [tasks.check]
-description = "执行test clippy format"
+description = "执行test clippy format-check"
 dependencies = [
     "test",
     "clippy",
-    "format"
+    "format-check"
 ]
 # 禁用默认的 check 行为
 clear = true

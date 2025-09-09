@@ -45,24 +45,6 @@ jobs:
       - name: Run check
         run: |
           cargo make check
-        env:
-          TESSERACT_BIN_PATH: ${{ github.workspace }}/vcpkg/installed/x64-windows/bin
-          LIBCLANG_PATH: ${{ github.workspace }}/llvm/lib
-          LEPTONICA_INCLUDE_PATH: ${{ github.workspace }}/vcpkg/installed/x64-windows/include
-          LEPTONICA_LINK_PATHS: ${{ github.workspace }}/vcpkg/installed/x64-windows/lib
-          LEPTONICA_LINK_LIBS: leptonica-1.85.0
-          TESSERACT_INCLUDE_PATHS: ${{ github.workspace }}/vcpkg/installed/x64-windows/include
-          TESSERACT_LINK_PATHS: ${{ github.workspace }}/vcpkg/installed/x64-windows/lib
-          TESSERACT_LINK_LIBS: tesseract55
 
       - name: Run release
         run: cargo make release
-        env:
-          TESSERACT_BIN_PATH: ${{ github.workspace }}/vcpkg/installed/x64-windows/bin
-          LIBCLANG_PATH: ${{ github.workspace }}/llvm/lib
-          LEPTONICA_INCLUDE_PATH: ${{ github.workspace }}/vcpkg/installed/x64-windows/include
-          LEPTONICA_LINK_PATHS: ${{ github.workspace }}/vcpkg/installed/x64-windows/lib
-          LEPTONICA_LINK_LIBS: leptonica-1.85.0
-          TESSERACT_INCLUDE_PATHS: ${{ github.workspace }}/vcpkg/installed/x64-windows/include
-          TESSERACT_LINK_PATHS: ${{ github.workspace }}/vcpkg/installed/x64-windows/lib
-          TESSERACT_LINK_LIBS: tesseract55

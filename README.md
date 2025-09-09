@@ -21,17 +21,26 @@ This template should help get you started developing with Vue 3 and TypeScript i
 cargo make install
 ```
 
-### 3. 运行测试
+### 3. 编写代码
+编写代码，添加测试用例
+
+### 4. 运行测试
 ```powershell
 cargo make test
 ```
 
-### 4. 运行开发版本
+### 5. 运行开发版本
 ```powershell
 $env:DEEPINDEX_LOG_LEVEL="debug"; cargo make dev
 ```
 
-### 5. 构建生产版本
+### 6. 检查test、clippy、fmt
+```powershell
+cargo make format
+cargo make check
+```
+
+### 7. 构建生产版本
 ```powershell
 cargo make release
 ```
