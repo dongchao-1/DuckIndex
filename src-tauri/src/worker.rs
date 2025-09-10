@@ -170,17 +170,17 @@ impl Worker {
 
                         for dir in index_sub_dirs.difference(&current_sub_dirs) {
                             // 删除的目录
-                            info!("删除目录索引: {}", dir.display());
+                            info!("提交删除目录任务: {}", dir.display());
                             debug!("index_sub_dirs: {index_sub_dirs:?}");
                             debug!("current_sub_dirs: {current_sub_dirs:?}");
-                            self.indexer.delete_directory(dir)?;
+                            self.add_task(&PathType::Directory, dir, &TaskType::Delete)?;
                         }
                         for file in index_sub_files.difference(&current_sub_files) {
                             // 删除的文件
-                            info!("删除文件索引: {}", file.display());
+                            info!("提交删除文件任务: {}", file.display());
                             debug!("index_sub_files: {index_sub_files:?}");
                             debug!("current_sub_files: {current_sub_files:?}");
-                            self.indexer.delete_file(file)?;
+                            self.add_task(&PathType::File, file, &TaskType::Delete)?;
                         }
                     }
                 } else {
@@ -205,12 +205,9 @@ impl Worker {
                                     index_file.modified_time,
                                     modified_time
                                 );
-                                self.indexer.delete_file(&path)?;
-                                if self.reader.supports(&path)? {
-                                    self.add_task(&PathType::File, &path, &TaskType::Index)?;
-                                }
+                                self.add_task(&PathType::File, &path, &TaskType::Index)?;
                             }
-                        } else if self.reader.supports(&path)? {
+                        } else {
                             info!("文件未索引，添加任务。文件: {}", path.display());
                             self.add_task(&PathType::File, &path, &TaskType::Index)?;
                         }
@@ -219,23 +216,14 @@ impl Worker {
                     }
                 }
             } else if path.is_file() {
-                self.indexer.delete_file(path)?;
-                // TODO: 这里不判断文件类型，文件名都要索引，内容在process时候在判断
-                if self.reader.supports(path)? {
-                    info!("添加文件索引任务。文件: {}", path.display());
-                    self.add_task(&PathType::File, path, &TaskType::Index)?;
-                }
+                info!("添加文件索引任务。文件: {}", path.display());
+                self.add_task(&PathType::File, path, &TaskType::Index)?;
             }
         } else {
-            info!("尝试删除目录或文件: {}", path.display());
-            self.indexer.delete_directory(path)?;
-            self.indexer.delete_file(path)?;
+            info!("提交删除目录或文件: {}", path.display());
+            self.add_task(&PathType::File, path, &TaskType::Delete)?;
+            self.add_task(&PathType::Directory, path, &TaskType::Delete)?;
         }
-        Ok(())
-    }
-
-    pub fn submit_delete_all_files(&self, path: &Path) -> Result<()> {
-        self.add_task(&PathType::Directory, path, &TaskType::Delete)?;
         Ok(())
     }
 
@@ -339,20 +327,30 @@ impl Worker {
                         TaskType::Index => match path_type {
                             PathType::Directory => {
                                 if path.is_dir() {
-                                    let _ = self.indexer.write_directory(path);
+                                    self.indexer.write_directory(path)?;
                                     Ok(())
                                 } else {
                                     Err(anyhow!("Directory not found"))
                                 }
                             }
                             PathType::File => {
+                                self.indexer.delete_file(path)?;
                                 if path.is_file() {
-                                    match self.reader.read(path) {
-                                        Ok(items) => {
-                                            let _ = self.indexer.write_file_items(path, items);
-                                            Ok(())
+                                    if self.reader.supports(path)? {
+                                        match self.reader.read(path) {
+                                            Ok(items) => {
+                                                self.indexer.write_file_items(path, items)?;
+                                                Ok(())
+                                            }
+                                            Err(e) => {
+                                                self.indexer.write_file_items(path, Vec::new())?;
+                                                Err(anyhow!("Read file failed: {}", e))
+                                            }
                                         }
-                                        Err(e) => Err(anyhow!("Read file failed: {}", e)),
+                                    } else {
+                                        // 文件类型不支持索引，只写入文件名
+                                        self.indexer.write_file_items(path, Vec::new())?;
+                                        Ok(())
                                     }
                                 } else {
                                     Err(anyhow!("File not found"))
@@ -482,7 +480,18 @@ mod tests {
             .submit_index_all_files(&temp_test_data_worker)
             .unwrap();
         let worker_status = worker.get_tasks_status().unwrap();
-        assert_eq!(worker_status.pending, 1);
+        assert_eq!(worker_status.pending, 2);
+
+        let indexer_status = indexer.get_index_status().unwrap();
+        assert_eq!(indexer_status.directories, 2);
+        assert_eq!(indexer_status.files, 2);
+
+        for _ in 0..2 {
+            worker.process_task().unwrap();
+        }
+
+        let worker_status = worker.get_tasks_status().unwrap();
+        assert_eq!(worker_status.pending, 0);
 
         let indexer_status = indexer.get_index_status().unwrap();
         assert_eq!(indexer_status.directories, 2);
@@ -500,7 +509,17 @@ mod tests {
             .submit_index_all_files(&temp_test_data_worker)
             .unwrap();
         let worker_status = worker.get_tasks_status().unwrap();
-        assert_eq!(worker_status.pending, 1);
+        assert_eq!(worker_status.pending, 2);
+
+        let indexer_status = indexer.get_index_status().unwrap();
+        assert_eq!(indexer_status.directories, 2);
+        assert_eq!(indexer_status.files, 2);
+
+        for _ in 0..2 {
+            worker.process_task().unwrap();
+        }
+        let worker_status = worker.get_tasks_status().unwrap();
+        assert_eq!(worker_status.pending, 0);
 
         let indexer_status = indexer.get_index_status().unwrap();
         assert_eq!(indexer_status.directories, 1);
@@ -619,9 +638,9 @@ mod tests {
             .submit_index_all_files(&temp_test_data_worker)
             .unwrap();
         let worker_status = worker.get_tasks_status().unwrap();
-        assert_eq!(worker_status.pending, 3);
+        assert_eq!(worker_status.pending, 4);
 
-        for _ in 0..3 {
+        for _ in 0..4 {
             worker.process_task().unwrap();
         }
 
@@ -676,29 +695,5 @@ mod tests {
         assert_eq!(status.pending, 0);
         assert_eq!(status.running, 0);
         assert_eq!(status.running_tasks, Vec::<String>::new());
-    }
-
-    #[test]
-    fn test_del_all_files() {
-        let (_env, temp_test_data_worker) = prepare_test_data_worker();
-        let worker = Worker::new().unwrap();
-        worker
-            .submit_delete_all_files(&temp_test_data_worker)
-            .unwrap();
-        let indexer = Indexer::new().unwrap();
-        let indexer_status = indexer.get_index_status().unwrap();
-        assert_eq!(indexer_status.directories, 2);
-        assert_eq!(indexer_status.files, 2);
-
-        worker.process_task().unwrap();
-        let status = worker.get_tasks_status().unwrap();
-        assert_eq!(status.pending, 0);
-        assert_eq!(status.running, 0);
-        assert_eq!(status.running_tasks, Vec::<String>::new());
-
-        let indexer_status = indexer.get_index_status().unwrap();
-        assert_eq!(indexer_status.directories, 0);
-        assert_eq!(indexer_status.files, 0);
-        assert_eq!(indexer_status.items, 0);
     }
 }

@@ -84,13 +84,12 @@ async fn add_index_path(path: String) -> TauriResult<()> {
 #[tauri::command]
 async fn del_index_path(path: String) -> TauriResult<()> {
     tauri_spawn(async move {
-        // TODO 检查task状态
         let old_path = Path::new(&path);
         del_watched_path(old_path)?;
 
         let worker = Worker::new()?;
         info!("开始删除目录: {}", old_path.display());
-        worker.submit_delete_all_files(old_path)?;
+        worker.submit_index_all_files(old_path)?;
 
         let mut paths = Config::get_index_dir_paths()?;
         paths.retain(|p| p != &path);

@@ -27,11 +27,13 @@ cargo make install
 ### 4. 运行测试
 ```powershell
 cargo make test
+$env:RUST_BACKTRACE="full"; $env:DEEPINDEX_LOG_LEVEL="debug"; cargo make test
 ```
 
 ### 5. 运行开发版本
 ```powershell
-$env:DEEPINDEX_LOG_LEVEL="debug"; cargo make dev
+cargo make dev
+$env:RUST_BACKTRACE="full"; $env:DEEPINDEX_LOG_LEVEL="debug"; cargo make dev
 ```
 
 ### 6. 检查test、clippy、fmt

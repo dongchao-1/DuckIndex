@@ -180,6 +180,7 @@ impl Reader for DocxReader {
 struct PptxReader;
 impl Reader for PptxReader {
     fn read(&self, file_path: &Path) -> Result<Vec<Item>> {
+        // TODO 这个好像没有自动删除临时目录
         let temp_dir = TempDir::new()?;
         let file = File::open(file_path)?;
         let mut archive = ZipArchive::new(file)?;
