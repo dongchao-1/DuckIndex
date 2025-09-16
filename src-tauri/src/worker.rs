@@ -227,6 +227,11 @@ impl Worker {
         Ok(())
     }
 
+    pub fn submit_delete_all_files(&self, path: &Path) -> Result<()> {
+        self.add_task(&PathType::Directory, path, &TaskType::Delete)?;
+        Ok(())
+    }
+
     pub fn get_tasks_status(&self) -> Result<TaskStatusStat> {
         let conn = get_conn()?;
         let (pending, running) = conn.query_one(
@@ -695,5 +700,29 @@ mod tests {
         assert_eq!(status.pending, 0);
         assert_eq!(status.running, 0);
         assert_eq!(status.running_tasks, Vec::<String>::new());
+    }
+
+    #[test]
+    fn test_del_all_files() {
+        let (_env, temp_test_data_worker) = prepare_test_data_worker();
+        let worker = Worker::new().unwrap();
+        worker
+            .submit_delete_all_files(&temp_test_data_worker)
+            .unwrap();
+        let indexer = Indexer::new().unwrap();
+        let indexer_status = indexer.get_index_status().unwrap();
+        assert_eq!(indexer_status.directories, 2);
+        assert_eq!(indexer_status.files, 2);
+
+        worker.process_task().unwrap();
+        let status = worker.get_tasks_status().unwrap();
+        assert_eq!(status.pending, 0);
+        assert_eq!(status.running, 0);
+        assert_eq!(status.running_tasks, Vec::<String>::new());
+
+        let indexer_status = indexer.get_index_status().unwrap();
+        assert_eq!(indexer_status.directories, 0);
+        assert_eq!(indexer_status.files, 0);
+        assert_eq!(indexer_status.items, 0);
     }
 }

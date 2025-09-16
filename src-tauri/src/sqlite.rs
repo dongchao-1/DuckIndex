@@ -46,7 +46,7 @@ pub fn get_conn() -> Result<PooledConnection<SqliteConnectionManager>> {
 pub fn close_pool() {
     info!("关闭连接池...");
     let conn = get_conn().expect("Failed to get connection");
-    conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);")
+    conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE); vacuum;")
         .expect("Failed to execute batch");
 
     if let Some(pool_arc) = POOL.get() {
