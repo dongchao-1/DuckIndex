@@ -75,6 +75,7 @@ pub fn check_or_init_db() -> Result<()> {
                 unique (key)
             );
             INSERT INTO config (key, value) VALUES ('index_dir_paths', '[]');
+            INSERT INTO config (key, value) VALUES ('extension_whitelist', '{}');
 
             -- indexer.rs
             DROP TABLE IF EXISTS directories;
