@@ -7,23 +7,27 @@ DuckIndex 是一个基于Vue+Rust编写的本地文件内容索引和搜索工�
 
 ## 🚀 核心功能
 ### 🔍 精准搜索
+<img src="docs/search.png">
+
 - **全文检索**: 索引文件内容，支持关键词精确匹配
 - **三列布局**: 文件名、文件路径、匹配内容，信息一目了然
 - **分页加载**: 无限滚动加载搜索结果，优化大量数据展示
 
 ### ⚙️ 灵活配置
+<img src="docs/search.png">
+
 - **目录管理**: 自定义索引目录，精准控制索引范围
 - **文件类型过滤**: 树形界面管理文件扩展名白名单，当前支持格式有：
+
 
 | 文件类型 | 支持格式 | 提取方式 |
 |---------|---------|---------|
 | 文本文件 | `.txt` `.md` `.markdown` | 读取文本内容，按行拆分 |
 | Office 文档 | `.docx` `.pptx` `.xlsx` | 解析文档结构，按段落拆分 |
 | PDF 文档 | `.pdf` | PDF内容解析 |
-| 图像文件 | `.png` `.jpg` `.jpeg` `.gif` `.bmp` `.tiff` `.webp` | OCR文字识别 |
+| 图像文件 | `.png` `.jpg` `.jpeg` `.gif` `.bmp` `.tiff` `.webp` | OCR文字识别(Tesseract) |
 
 ### 🔧 高级特性
-- **OCR 文字识别**: 基于 Tesseract 引擎，提取图像中的文字内容
 - **增量索引**: 智能监控文件变化，仅索引修改内容
 - **SQLite 存储**: 本地数据库存储，保证数据安全与查询性能
 
@@ -47,7 +51,7 @@ DuckIndex 是一个基于Vue+Rust编写的本地文件内容索引和搜索工�
 - **测试框架**: cargo-nextest
 - **CI/CD**: GitHub Actions
 
-## �💻 开发
+## 💻 开发
 ### 推荐IDE和插件
 - [VS Code](https://code.visualstudio.com/) + [Vue - Official](https://marketplace.visualstudio.com/items?itemName=Vue.volar) + [Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode) + [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer)
 
