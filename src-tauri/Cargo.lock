@@ -896,38 +896,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "deepindex"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "chrono",
- "config",
- "directories",
- "fs_extra",
- "log",
- "log4rs",
- "lopdf",
- "notify",
- "once_cell",
- "quick-xml 0.38.3",
- "r2d2",
- "r2d2_sqlite",
- "rusqlite",
- "serde",
- "serde_json",
- "serde_yaml",
- "strum",
- "tauri",
- "tauri-build",
- "tauri-plugin-dialog",
- "tauri-plugin-opener",
- "tempfile",
- "tesseract",
- "thiserror 2.0.16",
- "zip",
-]
-
-[[package]]
 name = "deflate64"
 version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1133,6 +1101,38 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cd1511a7b6a56299bd043a9c167a6d2bfb37bf84a6dfceaba651168adfb43c87"
 dependencies = [
  "dtoa",
+]
+
+[[package]]
+name = "duckindex"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "config",
+ "directories",
+ "fs_extra",
+ "log",
+ "log4rs",
+ "lopdf",
+ "notify",
+ "once_cell",
+ "quick-xml 0.38.3",
+ "r2d2",
+ "r2d2_sqlite",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "strum",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-dialog",
+ "tauri-plugin-opener",
+ "tempfile",
+ "tesseract",
+ "thiserror 2.0.16",
+ "zip",
 ]
 
 [[package]]

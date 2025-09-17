@@ -12,7 +12,7 @@ use crate::dirs::get_log_dir;
 
 pub fn init_logger() {
     let level_filter;
-    if let Ok(log_level) = env::var("DEEPINDEX_LOG_LEVEL") {
+    if let Ok(log_level) = env::var("DUCKINDEX_LOG_LEVEL") {
         level_filter = match log_level.to_lowercase().as_str() {
             "error" => LevelFilter::Error,
             "warn" => LevelFilter::Warn,
@@ -30,7 +30,7 @@ pub fn init_logger() {
     let trigger = SizeTrigger::new(64 * 1024 * 1024);
     let roller = FixedWindowRoller::builder()
         .build(
-            get_log_dir().join("deepindex_{}.log.gz").to_str().unwrap(),
+            get_log_dir().join("duckindex_{}.log.gz").to_str().unwrap(),
             7,
         )
         .unwrap();
@@ -38,7 +38,7 @@ pub fn init_logger() {
     let policy = CompoundPolicy::new(Box::new(trigger), Box::new(roller));
 
     let pattern = "{d(%Y-%m-%d %H:%M:%S%.3f)} {T} {f}:{L} [{l}] {m}{n}";
-    let appender = if env::var("DEEPINDEX_TEST_DIR").is_ok() {
+    let appender = if env::var("DUCKINDEX_TEST_DIR").is_ok() {
         Box::new(
             log4rs::append::console::ConsoleAppender::builder()
                 .encoder(Box::new(PatternEncoder::new(pattern)))
@@ -48,7 +48,7 @@ pub fn init_logger() {
         Box::new(
             log4rs::append::rolling_file::RollingFileAppender::builder()
                 .encoder(Box::new(PatternEncoder::new(pattern)))
-                .build(get_log_dir().join("deepindex.log"), Box::new(policy))
+                .build(get_log_dir().join("duckindex.log"), Box::new(policy))
                 .unwrap(),
         ) as Box<dyn log4rs::append::Append>
     };

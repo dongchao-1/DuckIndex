@@ -1,8 +1,9 @@
-# DeepIndex
+# DuckIndex
+<img src="app-icon.png" width="64" height="64" align="left" style="margin-right: 10px;">
 
-DeepIndex 是一个基于Vue+Rust编写的本地文件内容索引和搜索工具，它能够对本地文件进行深度索引，包括文件目录、文件名和文件内容，支持全文检索，让您快速找到所需信息。
+DuckIndex 是一个基于Vue+Rust编写的本地文件内容索引和搜索工具，它能够对本地文件进行深度索引，包括文件目录、文件名和文件内容，支持全文检索，让您快速找到所需信息。
 
-下载： [DeepIndex](https://github.com/dongchao-1/DeepIndex/releases)
+下载： [DuckIndex](https://github.com/dongchao-1/DuckIndex/releases)
 
 ## 🚀 核心功能
 ### 🔍 精准搜索
@@ -16,10 +17,10 @@ DeepIndex 是一个基于Vue+Rust编写的本地文件内容索引和搜索工�
 
 | 文件类型 | 支持格式 | 提取方式 |
 |---------|---------|---------|
-| 文本文件 | `.txt`, `.md`, `.markdown` | 读取文本内容，按行拆分 |
-| Office 文档 | `.docx`, `.pptx`, `.xlsx` | 解析文档结构，按段落拆分 |
+| 文本文件 | `.txt` `.md` `.markdown` | 读取文本内容，按行拆分 |
+| Office 文档 | `.docx` `.pptx` `.xlsx` | 解析文档结构，按段落拆分 |
 | PDF 文档 | `.pdf` | PDF内容解析 |
-| 图像文件 | `.png`, `.jpg`, `.jpeg`, `.gif`, `.bmp`, `.tiff`, `.webp` | OCR文字识别 |
+| 图像文件 | `.png` `.jpg` `.jpeg` `.gif` `.bmp` `.tiff` `.webp` | OCR文字识别 |
 
 ### 🔧 高级特性
 - **OCR 文字识别**: 基于 Tesseract 引擎，提取图像中的文字内容
@@ -69,13 +70,13 @@ cargo make install
 ### 4. 运行测试
 ```powershell
 cargo make test
-$env:RUST_BACKTRACE="full"; $env:DEEPINDEX_LOG_LEVEL="debug"; cargo make test
+$env:RUST_BACKTRACE="full"; $env:DUCKINDEX_LOG_LEVEL="debug"; cargo make test
 ```
 
 ### 5. 运行开发版本
 ```powershell
 cargo make dev
-$env:RUST_BACKTRACE="full"; $env:DEEPINDEX_LOG_LEVEL="debug"; cargo make dev
+$env:RUST_BACKTRACE="full"; $env:DUCKINDEX_LOG_LEVEL="debug"; cargo make dev
 ```
 
 ### 6. 检查test、clippy、fmt
@@ -90,9 +91,9 @@ cargo make release
 ```
 
 ### 重要路径
-- dev应用数据: `%APPDATA%\DeepIndex`
+- dev应用数据: `%APPDATA%\DuckIndex`
 - 测试临时目录: `%TEMP%`
 
 ---
 
-**DeepIndex** - 让本地文件搜索变得简单高效 🔍✨
+**DuckIndex** - 让本地文件搜索变得简单高效 🔍✨

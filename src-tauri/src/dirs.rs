@@ -6,10 +6,10 @@ use directories::ProjectDirs;
 // 定义公司和应用名称，用于确定日志路径
 const PROJECT_QUALIFIER: &str = "";
 const PROJECT_ORGANIZATION: &str = "";
-const PROJECT_APPLICATION: &str = "DeepIndex";
+const PROJECT_APPLICATION: &str = "DuckIndex";
 
 pub fn get_project_dirs() -> PathBuf {
-    if let Ok(val) = env::var("DEEPINDEX_TEST_DIR") {
+    if let Ok(val) = env::var("DUCKINDEX_TEST_DIR") {
         Path::new(&val).join("data")
     } else {
         ProjectDirs::from(PROJECT_QUALIFIER, PROJECT_ORGANIZATION, PROJECT_APPLICATION)

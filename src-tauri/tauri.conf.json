@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "DeepIndex",
+  "productName": "DuckIndex",
   "version": "0.1.0",
-  "identifier": "DeepIndex",
+  "identifier": "DuckIndex",
   "build": {
     "beforeDevCommand": "pnpm dev",
     "devUrl": "http://localhost:1420",
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "DeepIndex",
+        "title": "DuckIndex",
         "width": 1200,
         "height": 800
       }

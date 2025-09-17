@@ -17,7 +17,7 @@ pub mod test_mod {
 
         pub fn new_with_cleanup(auto_cleanup: bool) -> Self {
             let now = Local::now().format("%Y-%m-%d_%H-%M-%S").to_string();
-            let dir_name = format!(".deepindex_test_{now}_");
+            let dir_name = format!(".duckindex_test_{now}_");
             let temp_dir = if auto_cleanup {
                 Builder::new().prefix(&dir_name).tempdir().unwrap()
             } else {
@@ -27,7 +27,7 @@ pub mod test_mod {
                     .tempdir()
                     .unwrap()
             };
-            env::set_var("DEEPINDEX_TEST_DIR", temp_dir.path());
+            env::set_var("DUCKINDEX_TEST_DIR", temp_dir.path());
 
             setup_backend();
 
