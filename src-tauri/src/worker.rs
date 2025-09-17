@@ -140,8 +140,15 @@ impl Worker {
         self.submit_index_all_files_with_force_extension(path, None)
     }
 
-    pub fn submit_index_all_files_with_force_extension(&self, path: &Path, force_extension: Option<&str>) -> Result<()> {
-        info!("提交索引任务: {}, force_extension: {force_extension:?}", path.display());
+    pub fn submit_index_all_files_with_force_extension(
+        &self,
+        path: &Path,
+        force_extension: Option<&str>,
+    ) -> Result<()> {
+        info!(
+            "提交索引任务: {}, force_extension: {force_extension:?}",
+            path.display()
+        );
         if path.exists() {
             if path.is_dir() {
                 if let Ok(index_dir) = self.indexer.get_directory(path) {
@@ -207,9 +214,19 @@ impl Worker {
                                 if let Some(force_ext) = force_extension {
                                     // 强制索引某个文件类型
                                     if let Some(ext) = path.extension() {
-                                        if ext.to_str().unwrap_or_default().to_lowercase() == force_ext {
-                                            info!("强制索引文件类型: {}, {}", force_ext, path.display());
-                                            self.add_task(&PathType::File, &path, &TaskType::Index)?;
+                                        if ext.to_str().unwrap_or_default().to_lowercase()
+                                            == force_ext
+                                        {
+                                            info!(
+                                                "强制索引文件类型: {}, {}",
+                                                force_ext,
+                                                path.display()
+                                            );
+                                            self.add_task(
+                                                &PathType::File,
+                                                &path,
+                                                &TaskType::Index,
+                                            )?;
                                         }
                                     }
                                 }

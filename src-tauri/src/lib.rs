@@ -24,9 +24,9 @@ mod config;
 mod dirs;
 mod indexer;
 mod log;
+mod monitor;
 mod reader;
 mod sqlite;
-mod monitor;
 mod test;
 mod utils;
 mod worker;
@@ -158,10 +158,12 @@ async fn set_extension_enabled(extension: String, enabled: bool) -> TauriResult<
         let index_dir_paths = Config::get_index_dir_paths()?;
         for each in index_dir_paths {
             info!("处理文件类型变化: {extension}, {each}");
-            worker.submit_index_all_files_with_force_extension(Path::new(&each), Some(&extension))?;
+            worker
+                .submit_index_all_files_with_force_extension(Path::new(&each), Some(&extension))?;
         }
         Ok(())
-    }).await
+    })
+    .await
 }
 
 #[derive(Debug, Clone, Serialize)]

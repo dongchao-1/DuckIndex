@@ -72,8 +72,11 @@ impl CompositeReader {
 
     pub fn get_supported_extensions(&self) -> Result<HashSet<String>> {
         let ext_whitelist = Config::get_extension_whitelist()?;
-        
-        fn collect_enabled_extensions(nodes: &[crate::config::ExtensionConfigTree], result: &mut HashSet<String>) {
+
+        fn collect_enabled_extensions(
+            nodes: &[crate::config::ExtensionConfigTree],
+            result: &mut HashSet<String>,
+        ) {
             for node in nodes {
                 if node.is_extension && node.enabled == Some(true) {
                     result.insert(node.label.to_string());
@@ -83,7 +86,7 @@ impl CompositeReader {
                 }
             }
         }
-        
+
         let mut enabled_extensions = HashSet::new();
         collect_enabled_extensions(&ext_whitelist, &mut enabled_extensions);
         Ok(enabled_extensions)
