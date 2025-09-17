@@ -63,7 +63,7 @@ pub fn check_or_init_db() -> Result<()> {
     if check_db_init().is_err() {
         let conn = get_conn()?;
         conn.execute_batch(
-            r"PRAGMA journal_mode = WAL;
+            r#"PRAGMA journal_mode = WAL;
             PRAGMA auto_vacuum = FULL;
 
             -- config.rs
@@ -74,8 +74,8 @@ pub fn check_or_init_db() -> Result<()> {
                 value TEXT NOT NULL,
                 unique (key)
             );
-            INSERT INTO config (key, value) VALUES ('index_dir_paths', '[]');
-            INSERT INTO config (key, value) VALUES ('extension_whitelist', '{}');
+            INSERT INTO config (key, value) VALUES ('IndexDirPaths', '[]');
+            INSERT INTO config (key, value) VALUES ('ExtensionWhitelist', '[{"label":"文档","is_extension":false,"children":[{"label":"txt","is_extension":true,"enabled":true},{"label":"md","is_extension":true,"enabled":true},{"label":"markdown","is_extension":true,"enabled":true},{"label":"docx","is_extension":true,"enabled":true},{"label":"pptx","is_extension":true,"enabled":true},{"label":"pdf","is_extension":true,"enabled":true}]}, {"label":"数据","is_extension":false,"children":[{"label":"xlsx","is_extension":true,"enabled":false}]}, {"label":"图片","is_extension":false,"children":[{"label":"jpg","is_extension":true,"enabled":true},{"label":"jpeg","is_extension":true,"enabled":true},{"label":"png","is_extension":true,"enabled":true},{"label":"tif","is_extension":true,"enabled":true},{"label":"tiff","is_extension":true,"enabled":true},{"label":"gif","is_extension":true,"enabled":true},{"label":"webp","is_extension":true,"enabled":true}]}]');
 
             -- indexer.rs
             DROP TABLE IF EXISTS directories;
@@ -125,7 +125,7 @@ pub fn check_or_init_db() -> Result<()> {
                 version TEXT
             );
             INSERT INTO db_version (version) VALUES ('0.1');
-            ",
+            "#,
         )?;
     }
     Ok(())

@@ -1,11 +1,11 @@
 [env]
 RUSTFLAGS = "-Ctarget-feature=+crt-static"
-TESSERACT_BIN_PATH = "${CARGO_MAKE_WORKING_DIRECTORY}/vcpkg/installed/x64-windows/bin"
-LEPTONICA_INCLUDE_PATH = "${CARGO_MAKE_WORKING_DIRECTORY}/vcpkg/installed/x64-windows/include"
-LEPTONICA_LINK_PATHS = "${CARGO_MAKE_WORKING_DIRECTORY}/vcpkg/installed/x64-windows/lib"
+TESSERACT_BIN_PATH = "${CARGO_MAKE_WORKING_DIRECTORY}\\vcpkg\\installed\\x64-windows\\bin"
+LEPTONICA_INCLUDE_PATH = "${CARGO_MAKE_WORKING_DIRECTORY}\\vcpkg\\installed\\x64-windows\\include"
+LEPTONICA_LINK_PATHS = "${CARGO_MAKE_WORKING_DIRECTORY}\\vcpkg\\installed\\x64-windows\\lib"
 LEPTONICA_LINK_LIBS = "leptonica-1.85.0"
-TESSERACT_INCLUDE_PATHS = "${CARGO_MAKE_WORKING_DIRECTORY}/vcpkg/installed/x64-windows/include"
-TESSERACT_LINK_PATHS = "${CARGO_MAKE_WORKING_DIRECTORY}/vcpkg/installed/x64-windows/lib"
+TESSERACT_INCLUDE_PATHS = "${CARGO_MAKE_WORKING_DIRECTORY}\\vcpkg\\installed\\x64-windows\\include"
+TESSERACT_LINK_PATHS = "${CARGO_MAKE_WORKING_DIRECTORY}\\vcpkg\\installed\\x64-windows\\lib"
 TESSERACT_LINK_LIBS = "tesseract55"
 
 [tasks.install-vcpkg]
@@ -13,7 +13,7 @@ description = "Clone并安装vcpkg"
 script = [
     'if not exist vcpkg ( git clone https://github.com/microsoft/vcpkg.git )',
     'pushd vcpkg',
-    '.\\bootstrap-vcpkg.bat',
+    '.\\bootstrap-vcpkg.bat || exit /b 1',
     'popd'
 ]
 
@@ -21,7 +21,7 @@ script = [
 description = "安装Tesseract"
 script = [
     'pushd vcpkg',
-    '.\\vcpkg.exe install tesseract:x64-windows',
+    '.\\vcpkg.exe install tesseract:x64-windows || exit /b 1',
     'popd'
 ]
 dependencies = ["install-vcpkg"]

@@ -137,6 +137,11 @@ impl Worker {
     }
 
     pub fn submit_index_all_files(&self, path: &Path) -> Result<()> {
+        self.submit_index_all_files_with_force_extension(path, None)
+    }
+
+    pub fn submit_index_all_files_with_force_extension(&self, path: &Path, force_extension: Option<&str>) -> Result<()> {
+        info!("提交索引任务: {}, force_extension: {force_extension:?}", path.display());
         if path.exists() {
             if path.is_dir() {
                 if let Ok(index_dir) = self.indexer.get_directory(path) {
@@ -197,7 +202,18 @@ impl Worker {
                         if let Ok(index_file) = self.indexer.get_file(&path) {
                             let modified_time = self.indexer.get_modified_time(&path)?;
                             if index_file.modified_time == modified_time {
-                                continue;
+                                // 文件时间未变更
+                                debug!("文件时间未变更。文件: {}", path.display());
+                                if let Some(force_ext) = force_extension {
+                                    // 强制索引某个文件类型
+                                    if let Some(ext) = path.extension() {
+                                        if ext.to_str().unwrap_or_default().to_lowercase() == force_ext {
+                                            info!("强制索引文件类型: {}, {}", force_ext, path.display());
+                                            self.add_task(&PathType::File, &path, &TaskType::Index)?;
+                                        }
+                                    }
+                                }
+                                // 其他无变化，不做处理
                             } else {
                                 info!(
                                     "文件索引过，但文件时间发生变更。文件: {} 原时间: {} 现时间:{}",
@@ -212,7 +228,7 @@ impl Worker {
                             self.add_task(&PathType::File, &path, &TaskType::Index)?;
                         }
                     } else if path.is_dir() {
-                        self.submit_index_all_files(&path)?;
+                        self.submit_index_all_files_with_force_extension(&path, force_extension)?;
                     }
                 }
             } else if path.is_file() {

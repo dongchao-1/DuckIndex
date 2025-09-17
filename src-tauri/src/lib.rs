@@ -7,7 +7,7 @@ use std::thread;
 use tauri::{async_runtime, RunEvent};
 use thiserror::Error;
 
-use crate::config::Config;
+use crate::config::{Config, ExtensionConfigTree};
 use crate::indexer::IndexStatusStat;
 use crate::indexer::Indexer;
 use crate::indexer::SearchResultDirectory;
@@ -26,7 +26,6 @@ mod indexer;
 mod log;
 mod reader;
 mod sqlite;
-// mod indexer_tantivy;
 mod monitor;
 mod test;
 mod utils;
@@ -144,6 +143,27 @@ async fn get_index_dir_paths() -> TauriResult<Vec<String>> {
     tauri_spawn(async move { Config::get_index_dir_paths() }).await
 }
 
+#[tauri::command]
+async fn get_extension_whitelist() -> TauriResult<Vec<ExtensionConfigTree>> {
+    tauri_spawn(async move { Config::get_extension_whitelist() }).await
+}
+
+#[tauri::command]
+async fn set_extension_enabled(extension: String, enabled: bool) -> TauriResult<()> {
+    tauri_spawn(async move {
+        Config::set_extension_enabled(&extension, enabled)?;
+
+        let worker = Worker::new()?;
+
+        let index_dir_paths = Config::get_index_dir_paths()?;
+        for each in index_dir_paths {
+            info!("处理文件类型变化: {extension}, {each}");
+            worker.submit_index_all_files_with_force_extension(Path::new(&each), Some(&extension))?;
+        }
+        Ok(())
+    }).await
+}
+
 #[derive(Debug, Clone, Serialize)]
 struct TotalStatus {
     task_status_stat: TaskStatusStat,
@@ -211,6 +231,8 @@ pub fn run() {
             add_index_path,
             del_index_path,
             get_index_dir_paths,
+            get_extension_whitelist,
+            set_extension_enabled,
             get_status,
         ])
         .build(tauri::generate_context!())

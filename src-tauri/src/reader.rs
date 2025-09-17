@@ -13,6 +13,8 @@ use tempfile::TempDir;
 use tesseract::Tesseract;
 use zip::ZipArchive;
 
+use crate::config::Config;
+
 #[derive(Debug)]
 pub struct Item {
     pub content: String,
@@ -25,7 +27,6 @@ pub trait Reader {
 
 pub struct CompositeReader {
     reader_map: HashMap<String, Arc<dyn Reader>>,
-    supports_ext: HashSet<String>,
 }
 
 impl CompositeReader {
@@ -44,11 +45,7 @@ impl CompositeReader {
                 reader_map.insert(ext.to_string(), reader.clone());
             }
         }
-        let supports_ext = reader_map.keys().cloned().collect();
-        Ok(CompositeReader {
-            reader_map,
-            supports_ext,
-        })
+        Ok(CompositeReader { reader_map })
     }
 
     fn is_hidden(&self, path: &Path) -> Result<bool> {
@@ -73,6 +70,25 @@ impl CompositeReader {
         }
     }
 
+    pub fn get_supported_extensions(&self) -> Result<HashSet<String>> {
+        let ext_whitelist = Config::get_extension_whitelist()?;
+        
+        fn collect_enabled_extensions(nodes: &[crate::config::ExtensionConfigTree], result: &mut HashSet<String>) {
+            for node in nodes {
+                if node.is_extension && node.enabled == Some(true) {
+                    result.insert(node.label.to_string());
+                }
+                if let Some(children) = &node.children {
+                    collect_enabled_extensions(children, result);
+                }
+            }
+        }
+        
+        let mut enabled_extensions = HashSet::new();
+        collect_enabled_extensions(&ext_whitelist, &mut enabled_extensions);
+        Ok(enabled_extensions)
+    }
+
     pub fn supports(&self, file: &Path) -> Result<bool> {
         if self.is_hidden(file)? {
             return Ok(false);
@@ -83,7 +99,8 @@ impl CompositeReader {
                 .to_str()
                 .with_context(|| format!("Invalid extension in file: {file:?}"))?
                 .to_lowercase();
-            return Ok(self.supports_ext.contains(&ext_str));
+
+            return Ok(self.get_supported_extensions()?.contains(&ext_str));
         }
         Ok(false)
     }
