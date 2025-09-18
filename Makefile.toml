@@ -21,7 +21,8 @@ script = [
 description = "安装Tesseract"
 script = [
     'pushd vcpkg',
-    '.\\vcpkg.exe install tesseract:x64-windows || exit /b 1',
+    # '.\\vcpkg.exe install pthread:x64-windows-static || exit /b 1',
+    '.\\vcpkg.exe install tesseract:x64-windows-static || exit /b 1',
     'popd'
 ]
 dependencies = ["install-vcpkg"]
@@ -76,7 +77,7 @@ args = ["-Command", "pnpm tauri dev"]
 
 [tasks.release]
 command = "powershell.exe"
-args = ["-Command", "pnpm tauri build"]
+args = ["-Command", "pnpm tauri build -vv"]
 
 [tasks.install]
 description = "安装所有依赖"
