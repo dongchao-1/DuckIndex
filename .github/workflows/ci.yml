@@ -27,11 +27,11 @@ jobs:
         with:
           version: 10
 
-      - name: Install LLVM
-        uses: KyleMayes/install-llvm-action@v2
-        with:
-          version: "20.1.4"
-          directory: ${{ github.workspace }}/llvm
+      # - name: Install LLVM
+      #   uses: KyleMayes/install-llvm-action@v2
+      #   with:
+      #     version: "20.1.4"
+      #     directory: ${{ github.workspace }}/llvm
 
       - name: Install cargo-make and cargo-nextest
         run: |
