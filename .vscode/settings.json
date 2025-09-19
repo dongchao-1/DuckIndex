@@ -3,24 +3,11 @@
     "rust-analyzer.check.extraArgs": ["--all-features"],
 
     "rust-analyzer.cargo.extraEnv": {
-        "RUSTFLAGS": "-Ctarget-feature=+crt-static",
-        "TESSERACT_BIN_PATH": "${workspaceFolder}\\vcpkg\\installed\\x64-windows\\bin",
-        "LEPTONICA_INCLUDE_PATH": "${workspaceFolder}\\vcpkg\\installed\\x64-windows\\include",
-        "LEPTONICA_LINK_PATHS": "${workspaceFolder}\\vcpkg\\installed\\x64-windows\\lib",
+        "LEPTONICA_INCLUDE_PATH": "${workspaceFolder}\\vcpkg\\installed\\x64-windows-static\\include",
+        "LEPTONICA_LINK_PATHS": "${workspaceFolder}\\vcpkg\\installed\\x64-windows-static\\lib",
         "LEPTONICA_LINK_LIBS": "leptonica-1.85.0",
-        "TESSERACT_INCLUDE_PATHS": "${workspaceFolder}\\vcpkg\\installed\\x64-windows\\include",
-        "TESSERACT_LINK_PATHS": "${workspaceFolder}\\vcpkg\\installed\\x64-windows\\lib",
-        "TESSERACT_LINK_LIBS": "tesseract55",
-    },
-
-    "terminal.integrated.env.windows": {
-        "RUSTFLAGS": "-Ctarget-feature=+crt-static",
-        "TESSERACT_BIN_PATH": "${workspaceFolder}\\vcpkg\\installed\\x64-windows\\bin",
-        "LEPTONICA_INCLUDE_PATH": "${workspaceFolder}\\vcpkg\\installed\\x64-windows\\include",
-        "LEPTONICA_LINK_PATHS": "${workspaceFolder}\\vcpkg\\installed\\x64-windows\\lib",
-        "LEPTONICA_LINK_LIBS": "leptonica-1.85.0",
-        "TESSERACT_INCLUDE_PATHS": "${workspaceFolder}\\vcpkg\\installed\\x64-windows\\include",
-        "TESSERACT_LINK_PATHS": "${workspaceFolder}\\vcpkg\\installed\\x64-windows\\lib",
+        "TESSERACT_INCLUDE_PATHS": "${workspaceFolder}\\vcpkg\\installed\\x64-windows-static\\include",
+        "TESSERACT_LINK_PATHS": "${workspaceFolder}\\vcpkg\\installed\\x64-windows-static\\lib",
         "TESSERACT_LINK_LIBS": "tesseract55",
     },
 }

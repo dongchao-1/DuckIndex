@@ -14,29 +14,9 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-
-      - name: Install pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 10
-
-      # - name: Install LLVM
-      #   uses: KyleMayes/install-llvm-action@v2
-      #   with:
-      #     version: "20.1.4"
-      #     directory: ${{ github.workspace }}/llvm
-
-      - name: Install cargo-make and cargo-nextest
+      - name: Install cargo-make
         run: |
           cargo install cargo-make
-          cargo install cargo-nextest
 
       - name: Run install
         run: |

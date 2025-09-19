@@ -6,9 +6,9 @@ use quick_xml::Reader as quickXmlReader;
 use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::io::{BufRead, BufReader};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::{fs, vec};
+use std::{env, fs, vec};
 use tempfile::TempDir;
 use tesseract::Tesseract;
 use zip::ZipArchive;
@@ -358,8 +358,35 @@ impl Reader for PdfReader {
 struct OcrReader;
 impl Reader for OcrReader {
     fn read(&self, file_path: &Path) -> Result<Vec<Item>> {
+        // 获取可执行文件的目录
         // TODO https://github.com/antimatter15/tesseract-rs/issues/39
-        let tess = Tesseract::new(Some("./tessdata"), Some("eng+chi_sim"))?;
+        let exe_dir = env::current_exe()?
+            .parent()
+            .context("无法获取可执行文件目录")?
+            .to_path_buf();
+
+        let mut tessdata_path = exe_dir.join("tessdata");
+
+        // 检查 tessdata 目录是否存在
+        if !tessdata_path.exists() {
+            tessdata_path = PathBuf::from("./tessdata");
+
+            if !tessdata_path.exists() {
+                return Err(anyhow::anyhow!(
+                    "tessdata 目录不存在: {}. 请确保 tessdata 目录在可执行文件同级目录中。",
+                    tessdata_path.display()
+                ));
+            }
+        }
+
+        let tess = Tesseract::new(
+            Some(
+                tessdata_path
+                    .to_str()
+                    .context("tessdata 路径包含无效字符")?,
+            ),
+            Some("eng+chi_sim"),
+        )?;
 
         // 使用内存读取避免中文路径问题
         let image_data = std::fs::read(file_path)?;

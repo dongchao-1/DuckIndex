@@ -1,11 +1,9 @@
 [env]
-RUSTFLAGS = "-Ctarget-feature=+crt-static"
-TESSERACT_BIN_PATH = "${CARGO_MAKE_WORKING_DIRECTORY}\\vcpkg\\installed\\x64-windows\\bin"
-LEPTONICA_INCLUDE_PATH = "${CARGO_MAKE_WORKING_DIRECTORY}\\vcpkg\\installed\\x64-windows\\include"
-LEPTONICA_LINK_PATHS = "${CARGO_MAKE_WORKING_DIRECTORY}\\vcpkg\\installed\\x64-windows\\lib"
+LEPTONICA_INCLUDE_PATH = "${CARGO_MAKE_WORKING_DIRECTORY}\\vcpkg\\installed\\x64-windows-static\\include"
+LEPTONICA_LINK_PATHS = "${CARGO_MAKE_WORKING_DIRECTORY}\\vcpkg\\installed\\x64-windows-static\\lib"
 LEPTONICA_LINK_LIBS = "leptonica-1.85.0"
-TESSERACT_INCLUDE_PATHS = "${CARGO_MAKE_WORKING_DIRECTORY}\\vcpkg\\installed\\x64-windows\\include"
-TESSERACT_LINK_PATHS = "${CARGO_MAKE_WORKING_DIRECTORY}\\vcpkg\\installed\\x64-windows\\lib"
+TESSERACT_INCLUDE_PATHS = "${CARGO_MAKE_WORKING_DIRECTORY}\\vcpkg\\installed\\x64-windows-static\\include"
+TESSERACT_LINK_PATHS = "${CARGO_MAKE_WORKING_DIRECTORY}\\vcpkg\\installed\\x64-windows-static\\lib"
 TESSERACT_LINK_LIBS = "tesseract55"
 
 [tasks.install-vcpkg]
@@ -21,7 +19,6 @@ script = [
 description = "安装Tesseract"
 script = [
     'pushd vcpkg',
-    # '.\\vcpkg.exe install pthread:x64-windows-static || exit /b 1',
     '.\\vcpkg.exe install tesseract:x64-windows-static || exit /b 1',
     'popd'
 ]
@@ -32,10 +29,10 @@ description = "安装Cargo Nextest"
 command = "cargo"
 args = ["install", "cargo-nextest", "--locked"]
 
-[tasks.pnpm-install]
+[tasks.npm-install]
 description = "安装前端依赖"
 command = "powershell.exe"
-args = ["-Command", "pnpm install"]
+args = ["-Command", "npm install"]
 
 [tasks.build]
 command = "cargo"
@@ -67,24 +64,24 @@ args = ["clean", "--manifest-path", "./src-tauri/Cargo.toml"]
 command = "powershell.exe"
 args = ["-Command", "try { Remove-Item -Recurse -Force -ErrorAction SilentlyContinue vcpkg } finally { exit 0 }"]
 
-[tasks.clean-pnpm]
+[tasks.clean-npm]
 command = "powershell.exe"
 args = ["-Command", "try { Remove-Item -Recurse -Force -ErrorAction SilentlyContinue node_modules, dist } finally { exit 0 }"]
 
 [tasks.dev]
 command = "powershell.exe"
-args = ["-Command", "pnpm tauri dev"]
+args = ["-Command", "npm run tauri dev"]
 
 [tasks.release]
 command = "powershell.exe"
-args = ["-Command", "pnpm tauri build -vv"]
+args = ["-Command", "npm run tauri build"]
 
 [tasks.install]
 description = "安装所有依赖"
 dependencies = ["install-vcpkg",
     "install-tesseract",
     "install-cargo-nextest",
-    "pnpm-install"
+    "npm-install"
 ]
 
 [tasks.check]
@@ -100,7 +97,7 @@ clear = true
 [tasks.clean]
 description = "清理所有依赖"
 dependencies = ["clean-cargo",
-    "clean-pnpm",
+    "clean-npm",
     "clean-vcpkg"
 ]
 # 禁用默认的 clean 行为
