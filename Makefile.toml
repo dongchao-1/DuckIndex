@@ -5,114 +5,66 @@ LEPTONICA_LINK_LIBS = "leptonica-1.85.0"
 TESSERACT_INCLUDE_PATHS = "${CARGO_MAKE_WORKING_DIRECTORY}\\vcpkg\\installed\\x64-windows-static\\include"
 TESSERACT_LINK_PATHS = "${CARGO_MAKE_WORKING_DIRECTORY}\\vcpkg\\installed\\x64-windows-static\\lib"
 TESSERACT_LINK_LIBS = "tesseract55"
-LIBCLANG_PATH = "C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\Llvm\\x64\\bin"
+LIBCLANG_PATH = "C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\VC\\Tools\\Llvm\\x64\\bin"
 
 [tasks.install-vcpkg]
-script_runner = "powershell"
-script_extension = "ps1"
 script = '''
-git clone https://github.com/microsoft/vcpkg.git
-pushd vcpkg
-.\\bootstrap-vcpkg.bat
+git clone https://github.com/microsoft/vcpkg.git && ^
+pushd vcpkg && ^
+.\\bootstrap-vcpkg.bat && ^
 popd
 '''
 
 [tasks.install-tesseract]
-script_runner = "powershell"
-script_extension = "ps1"
 script = '''
-pushd vcpkg
-.\\vcpkg.exe install tesseract:x64-windows-static
+pushd vcpkg && ^
+.\\vcpkg.exe install tesseract:x64-windows-static && ^
 popd
 '''
 
 [tasks.cargo-install]
-script_runner = "powershell"
-script_extension = "ps1"
-script = '''
-cargo install cargo-nextest
-rustup component add clippy-preview
-'''
+script = '''cargo install cargo-nextest'''
 
 [tasks.npm-install]
-script_runner = "powershell"
-script_extension = "ps1"
-script = '''
-npm install
-'''
+script = '''npm install'''
 
 [tasks.build]
-script_runner = "powershell"
-script_extension = "ps1"
 script = '''cargo build --manifest-path ./src-tauri/Cargo.toml'''
 clear = true
 
 [tasks.test]
-script_runner = "powershell"
-script_extension = "ps1"
-script = '''
-cargo nextest run --manifest-path ./src-tauri/Cargo.toml
-'''
+script = '''cargo nextest run --manifest-path ./src-tauri/Cargo.toml'''
 clear = true
 
 [tasks.clippy]
-script_runner = "powershell"
-script_extension = "ps1"
-script = '''
-cargo clippy --manifest-path ./src-tauri/Cargo.toml --all-targets --all-features -- -D warnings
-'''
+script = '''cargo clippy --manifest-path ./src-tauri/Cargo.toml --all-targets --all-features -- -D warnings'''
 clear = true
 
 [tasks.format]
-script_runner = "powershell"
-script_extension = "ps1"
-script = '''
-cargo fmt --manifest-path ./src-tauri/Cargo.toml
-'''
+script = '''cargo fmt --manifest-path ./src-tauri/Cargo.toml'''
 clear = true
 
 [tasks.format-check]
-description = "检查代码格式（不修改文件）"
-script_runner = "powershell"
-script_extension = "ps1"
-script = '''
-cargo fmt --manifest-path ./src-tauri/Cargo.toml --check
-'''
+script = '''cargo fmt --manifest-path ./src-tauri/Cargo.toml --check'''
 
 [tasks.clean-cargo]
-script_runner = "powershell"
-script_extension = "ps1"
-script = '''
-cargo clean --manifest-path ./src-tauri/Cargo.toml
-'''
+script = '''cargo clean --manifest-path ./src-tauri/Cargo.toml'''
 
 [tasks.clean-vcpkg]
-script_runner = "powershell"
-script_extension = "ps1"
-script = '''
-try { Remove-Item -Recurse -Force -ErrorAction SilentlyContinue vcpkg } finally { exit 0 }
-'''
+script = '''rmdir /s /q vcpkg
+exit /b 0'''
 
 [tasks.clean-npm]
-script_runner = "powershell"
-script_extension = "ps1"
-script = '''
-try { Remove-Item -Recurse -Force -ErrorAction SilentlyContinue node_modules, dist } finally { exit 0 }
+script = '''rmdir /s /q node_modules
+rmdir /s /q dist
+exit /b 0
 '''
 
 [tasks.dev]
-script_runner = "powershell"
-script_extension = "ps1"
-script = '''
-npm run tauri dev
-'''
+script = '''npm run tauri dev'''
 
 [tasks.release]
-script_runner = "powershell"
-script_extension = "ps1"
-script = '''
-npm run tauri build
-'''
+script = '''npm run tauri build'''
 
 [tasks.install]
 description = "安装所有依赖"

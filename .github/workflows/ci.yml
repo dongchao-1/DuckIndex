@@ -18,26 +18,6 @@ jobs:
         run: |
           cargo install cargo-make
 
-      - name: Debug environment
-        run: |
-          echo "=== Rust 环境信息 ==="
-          rustc --version
-          cargo --version
-          
-          echo "=== 环境变量 ==="
-          echo "PATH: $env:PATH"
-          echo "LIB: $env:LIB"
-          echo "INCLUDE: $env:INCLUDE"
-          echo "LIBCLANG_PATH: $env:LIBCLANG_PATH"
-          
-          echo "=== 查找 libclang.dll ==="
-          Get-ChildItem -Path "C:\\" -Filter "libclang.dll" -Recurse -ErrorAction SilentlyContinue | ForEach-Object {
-            echo "  找到: $($_.FullName)"
-          }
-          echo "=== 查找 link.exe ==="
-          where.exe link.exe
-          
-
       - name: clean
         run: |
           cargo make clean
