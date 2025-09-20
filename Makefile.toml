@@ -5,7 +5,7 @@ LEPTONICA_LINK_LIBS = "leptonica-1.85.0"
 TESSERACT_INCLUDE_PATHS = "${CARGO_MAKE_WORKING_DIRECTORY}\\vcpkg\\installed\\x64-windows-static\\include"
 TESSERACT_LINK_PATHS = "${CARGO_MAKE_WORKING_DIRECTORY}\\vcpkg\\installed\\x64-windows-static\\lib"
 TESSERACT_LINK_LIBS = "tesseract55"
-LIBCLANG_PATH = "C:\\Program Files (x86)\\Microsoft Visual Studio\\2022\\BuildTools\\VC\\Tools\\Llvm\\x64\\bin"
+LIBCLANG_PATH = "C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\Llvm\\x64\\bin"
 
 [tasks.install-vcpkg]
 script_runner = "powershell"
