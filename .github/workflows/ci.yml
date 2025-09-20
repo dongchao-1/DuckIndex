@@ -18,6 +18,36 @@ jobs:
         run: |
           cargo install cargo-make
 
+      - name: Debug environment
+        run: |
+          echo "=== Rust 环境信息 ==="
+          rustc --version
+          cargo --version
+          
+          echo "=== 环境变量 ==="
+          echo "PATH: $env:PATH"
+          echo "LIB: $env:LIB"
+          echo "INCLUDE: $env:INCLUDE"
+          echo "LIBCLANG_PATH: $env:LIBCLANG_PATH"
+          
+          echo "=== 查找 libclang.dll ==="
+          Get-ChildItem -Path "C:\\" -Filter "libclang.dll" -Recurse -ErrorAction SilentlyContinue | Select-Object FullName
+          
+          echo "=== 查找 link.exe ==="
+          where.exe link.exe
+          
+          echo "=== Visual Studio Build Tools 信息 ==="
+          if (Test-Path "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools") {
+            echo "Build Tools 已安装"
+            Get-ChildItem "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Tools" -Directory | Select-Object Name
+          } else {
+            echo "Build Tools 未找到"
+          }
+
+      - name: clean
+        run: |
+          cargo make clean
+
       - name: Run install
         run: |
           cargo make install

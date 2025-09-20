@@ -57,10 +57,18 @@ DuckIndex 是一个基于Vue+Rust编写的本地文件内容索引和搜索工�
 
 ### 1. 安装基础环境
 * 安装rust: https://www.rust-lang.org/tools/install
-* 安装node.js v22: https://nodejs.org/zh-cn/download
-* 安装Visual Studio生成工具（安装C++依赖）：https://visualstudio.microsoft.com/zh-hans/downloads/?q=build+tools#build-tools-for-visual-studio-2022
-* 安装llvm(跟vcpkg可能有冲突): https://releases.llvm.org/
-* 安装cargo-make: `cargo install cargo-make`
+* 安装node.js v22:
+```powershell
+choco install nodejs-lts --version=22.19.0 -y
+```
+* 安装Visual Studio生成工具（安装C++依赖）：
+```powershell
+choco install visualstudio2022buildtools --version=117.14.14 -y --package-parameters "--add Microsoft.VisualStudio.Component.VC.Tools.x86.x64 --add Microsoft.VisualStudio.Component.VC.CMake.Project --add Microsoft.VisualStudio.Component.VC.Llvm.Clang --add Microsoft.VisualStudio.Component.VC.Llvm.ClangToolset --add Microsoft.VisualStudio.Component.Windows11SDK.22621"
+```
+* 安装cargo-make: 
+```powershell
+cargo install cargo-make
+```
 
 ### 2. 安装依赖
 ```powershell
