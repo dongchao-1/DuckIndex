@@ -31,18 +31,12 @@ jobs:
           echo "LIBCLANG_PATH: $env:LIBCLANG_PATH"
           
           echo "=== 查找 libclang.dll ==="
-          Get-ChildItem -Path "C:\\" -Filter "libclang.dll" -Recurse -ErrorAction SilentlyContinue | Select-Object FullName
-          
+          Get-ChildItem -Path "C:\\" -Filter "libclang.dll" -Recurse -ErrorAction SilentlyContinue | ForEach-Object {
+            echo "  找到: $($_.FullName)"
+          }
           echo "=== 查找 link.exe ==="
           where.exe link.exe
           
-          echo "=== Visual Studio Build Tools 信息 ==="
-          if (Test-Path "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools") {
-            echo "Build Tools 已安装"
-            Get-ChildItem "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Tools" -Directory | Select-Object Name
-          } else {
-            echo "Build Tools 未找到"
-          }
 
       - name: clean
         run: |
