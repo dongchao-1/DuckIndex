@@ -18,7 +18,7 @@ jobs:
         run: |
           cargo install cargo-make
 
-      - name: clean
+      - name: Run clean
         run: |
           cargo make clean
 
