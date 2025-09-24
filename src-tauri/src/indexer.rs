@@ -1,13 +1,13 @@
 use anyhow::{anyhow, Context, Result};
 use chrono::{DateTime, Local};
 use log::{debug, info};
-use rusqlite::params;
+use duckdb::params;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, MAIN_SEPARATOR};
 
 use crate::reader::Item;
-use crate::sqlite::get_conn;
+use crate::duckdb::get_conn;
 use crate::utils::{filename_to_str, parent_to_str, path_to_str};
 
 #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
@@ -146,8 +146,8 @@ impl Indexer {
             // 准备所有参数
             let mut params = Vec::new();
             for item in chunk.iter() {
-                params.push(&file_id as &dyn rusqlite::ToSql);
-                params.push(&item.content as &dyn rusqlite::ToSql);
+                params.push(&file_id as &dyn duckdb::ToSql);
+                params.push(&item.content as &dyn duckdb::ToSql);
             }
 
             // 执行批量插入
@@ -350,11 +350,11 @@ impl Indexer {
     pub fn get_index_status(&self) -> Result<IndexStatusStat> {
         let conn = get_conn()?;
         let total_directories: i64 =
-            conn.query_one("SELECT COUNT(*) FROM directories", [], |row| row.get(0))?;
+            conn.query_row("SELECT COUNT(*) FROM directories", [], |row| row.get(0))?;
         let total_files: i64 =
-            conn.query_one("SELECT COUNT(*) FROM files", [], |row| row.get(0))?;
+            conn.query_row("SELECT COUNT(*) FROM files", [], |row| row.get(0))?;
         let indexed_files: i64 =
-            conn.query_one("SELECT COUNT(*) FROM items", [], |row| row.get(0))?;
+            conn.query_row("SELECT COUNT(*) FROM items", [], |row| row.get(0))?;
         Ok(IndexStatusStat {
             directories: total_directories as usize,
             files: total_files as usize,

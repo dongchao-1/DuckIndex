@@ -72,5 +72,11 @@ fn main() {
         );
     }
 
+    // // 告诉链接器忽略默认的动态运行时库
+    println!("cargo:rustc-link-arg-bins=/NODEFAULTLIB:msvcrt");
+
+    // // 重新指定静态运行时库
+    // println!("cargo:rustc-link-arg-bins=libcpmt");
+
     tauri_build::build()
 }

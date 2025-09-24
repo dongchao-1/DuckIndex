@@ -5,7 +5,7 @@ use log::debug;
 use log::error;
 use log::info;
 use once_cell::sync::OnceCell;
-use rusqlite::params;
+use duckdb::params;
 use serde::Serialize;
 use std::collections::HashSet;
 use std::fs;
@@ -20,7 +20,7 @@ use strum::EnumString;
 
 use crate::indexer::Indexer;
 use crate::reader::CompositeReader;
-use crate::sqlite::get_conn;
+use crate::duckdb::get_conn;
 
 static WORKER_LOCK: OnceCell<Mutex<()>> = OnceCell::new();
 
@@ -98,7 +98,7 @@ impl Worker {
             .with_context(|| format!("Invalid file path: {path:?}"))?
             .to_string();
         let now = Local::now().to_rfc3339();
-        let id = conn.query_one(
+        let id = conn.query_row(
             r"INSERT INTO tasks (path_type, path, task_type, status, created_at, updated_at) 
                 VALUES (?1, ?2, ?3, ?4, ?5, ?6) ON CONFLICT(path_type, path) 
                 DO UPDATE SET updated_at = ?6 RETURNING id",
@@ -267,7 +267,7 @@ impl Worker {
 
     pub fn get_tasks_status(&self) -> Result<TaskStatusStat> {
         let conn = get_conn()?;
-        let (pending, running) = conn.query_one(
+        let (pending, running) = conn.query_row(
             "SELECT COUNT(if(status = ?1, 1, NULL)), COUNT(if(status = ?2, 1, NULL)) FROM tasks",
             params![
                 TaskStatus::Pending.to_string(),
@@ -426,7 +426,7 @@ impl Worker {
                 let conn = get_conn()?;
                 conn.execute("delete from tasks where id = ?", params![id])?;
             }
-            Err(rusqlite::Error::QueryReturnedNoRows) => {
+            Err(duckdb::Error::QueryReturnedNoRows) => {
                 // 没有待处理的任务，休息1s
                 debug!("没有待处理的任务，休息1s");
                 thread::sleep(Duration::from_secs(1));

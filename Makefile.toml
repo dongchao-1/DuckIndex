@@ -6,6 +6,10 @@ TESSERACT_INCLUDE_PATHS = "${CARGO_MAKE_WORKING_DIRECTORY}\\vcpkg\\installed\\x6
 TESSERACT_LINK_PATHS = "${CARGO_MAKE_WORKING_DIRECTORY}\\vcpkg\\installed\\x64-windows-static\\lib"
 TESSERACT_LINK_LIBS = "tesseract55"
 LIBCLANG_PATH = "C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\VC\\Tools\\Llvm\\x64\\bin"
+VCPKG_ROOT = "${CARGO_MAKE_WORKING_DIRECTORY}\\vcpkg"
+DUCKDB_STATIC= "1"
+# DUCKDB_LIB_DIR="${CARGO_MAKE_WORKING_DIRECTORY}\\vcpkg\\installed\\x64-windows-static\\lib"
+# DUCKDB_INCLUDE_DIR="${CARGO_MAKE_WORKING_DIRECTORY}\\vcpkg\\installed\\x64-windows-static\\include"
 
 [tasks.install-vcpkg]
 script = '''
@@ -19,6 +23,7 @@ popd
 script = '''
 pushd vcpkg && ^
 .\\vcpkg.exe install tesseract:x64-windows-static && ^
+.\\vcpkg.exe install duckdb:x64-windows-static && ^
 popd
 '''
 

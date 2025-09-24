@@ -4,32 +4,26 @@ use anyhow::{anyhow, Context, Result};
 use log::{error, info};
 use once_cell::sync::OnceCell;
 use r2d2::{Pool, PooledConnection};
-use r2d2_sqlite::SqliteConnectionManager;
+use duckdb::DuckdbConnectionManager;
 
 use crate::dirs::get_index_dir;
 
 // 全局静态变量
-static POOL: OnceCell<Arc<Mutex<Option<Pool<SqliteConnectionManager>>>>> = OnceCell::new();
+static POOL: OnceCell<Arc<Mutex<Option<Pool<DuckdbConnectionManager>>>>> = OnceCell::new();
 
 pub fn init_pool() {
     POOL.get_or_init(|| {
         info!("初始化连接池...");
         let sqlite_path = get_index_dir().join("index.db");
 
-        let manager = SqliteConnectionManager::file(sqlite_path).with_init(|conn| {
-            conn.execute_batch(r"PRAGMA busy_timeout = 2147483647;")?;
-
-            conn.busy_handler(Some(|_retries| true))?;
-
-            Ok(())
-        });
+        let manager = DuckdbConnectionManager::file(sqlite_path).expect("Failed to create DuckDB manager");
         Arc::new(Mutex::new(Some(
             Pool::new(manager).expect("Failed to create pool"),
         )))
     });
 }
 
-pub fn get_conn() -> Result<PooledConnection<SqliteConnectionManager>> {
+pub fn get_conn() -> Result<PooledConnection<DuckdbConnectionManager>> {
     Ok(POOL
         .get()
         .expect("Pool not initialized")
@@ -46,7 +40,7 @@ pub fn get_conn() -> Result<PooledConnection<SqliteConnectionManager>> {
 pub fn close_pool() {
     info!("关闭连接池...");
     let conn = get_conn().expect("Failed to get connection");
-    conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE); vacuum;")
+    conn.execute_batch("CHECKPOINT;")
         .expect("Failed to execute batch");
 
     if let Some(pool_arc) = POOL.get() {
@@ -63,13 +57,14 @@ pub fn check_or_init_db() -> Result<()> {
     if check_db_init().is_err() {
         let conn = get_conn()?;
         conn.execute_batch(
-            r#"PRAGMA journal_mode = WAL;
-            PRAGMA auto_vacuum = FULL;
+            r#"
 
             -- config.rs
+            DROP SEQUENCE IF EXISTS config_id;
+            CREATE SEQUENCE config_id START 1;
             DROP TABLE IF EXISTS config;
             CREATE TABLE config (
-                id INTEGER PRIMARY KEY,
+                id INTEGER PRIMARY KEY DEFAULT NEXTVAL('config_id'),
                 key TEXT NOT NULL,
                 value TEXT NOT NULL,
                 unique (key)
@@ -78,36 +73,46 @@ pub fn check_or_init_db() -> Result<()> {
             INSERT INTO config (key, value) VALUES ('ExtensionWhitelist', '[{"label":"文档","is_extension":false,"children":[{"label":"txt","is_extension":true,"enabled":true},{"label":"md","is_extension":true,"enabled":true},{"label":"markdown","is_extension":true,"enabled":true},{"label":"docx","is_extension":true,"enabled":true},{"label":"pptx","is_extension":true,"enabled":true},{"label":"pdf","is_extension":true,"enabled":true}]}, {"label":"数据","is_extension":false,"children":[{"label":"xlsx","is_extension":true,"enabled":false}]}, {"label":"图片","is_extension":false,"children":[{"label":"jpg","is_extension":true,"enabled":true},{"label":"jpeg","is_extension":true,"enabled":true},{"label":"png","is_extension":true,"enabled":true},{"label":"tif","is_extension":true,"enabled":true},{"label":"tiff","is_extension":true,"enabled":true},{"label":"gif","is_extension":true,"enabled":true},{"label":"webp","is_extension":true,"enabled":true}]}]');
 
             -- indexer.rs
+            DROP SEQUENCE IF EXISTS directories_id;
+            CREATE SEQUENCE directories_id START 1;
             DROP TABLE IF EXISTS directories;
             CREATE TABLE directories (
-                id INTEGER PRIMARY KEY,
+                id INTEGER PRIMARY KEY DEFAULT NEXTVAL('directories_id'),
                 name TEXT NOT NULL,
                 path TEXT NOT NULL,
                 modified_time TEXT NOT NULL,
                 UNIQUE (path)
             );
             CREATE INDEX idx_directories_name ON directories (name);
+
+            DROP SEQUENCE IF EXISTS files_id;
+            CREATE SEQUENCE files_id START 1;
             DROP TABLE IF EXISTS files;
             CREATE TABLE files (
-                id INTEGER PRIMARY KEY,
+                id INTEGER PRIMARY KEY DEFAULT NEXTVAL('files_id'),
                 directory_id INTEGER NOT NULL,
                 name TEXT NOT NULL,
                 modified_time TEXT NOT NULL,
                 UNIQUE (directory_id, name)
             );
             CREATE INDEX idx_files_name ON files (name);
+
+            DROP SEQUENCE IF EXISTS items_id;
+            CREATE SEQUENCE items_id START 1;
             DROP TABLE IF EXISTS items;
             CREATE TABLE items (
-                id INTEGER PRIMARY KEY,
+                id INTEGER PRIMARY KEY DEFAULT NEXTVAL('items_id'),
                 file_id INTEGER NOT NULL,
                 content TEXT NOT NULL
             );
             CREATE INDEX idx_items_file_id ON items (file_id);
 
             -- worker.rs
+            DROP SEQUENCE IF EXISTS tasks_id;
+            CREATE SEQUENCE tasks_id START 1;
             DROP TABLE IF EXISTS tasks;
             CREATE TABLE tasks (
-                id INTEGER PRIMARY KEY,
+                id INTEGER PRIMARY KEY DEFAULT NEXTVAL('tasks_id'),
                 path_type TEXT NOT NULL,
                 path TEXT NOT NULL,
                 task_type TEXT NOT NULL,
@@ -134,7 +139,7 @@ pub fn check_or_init_db() -> Result<()> {
 fn check_db_init() -> Result<()> {
     let conn = get_conn()?;
     let row = conn
-        .query_one("select version from db_version", [], |row| {
+        .query_row("select version from db_version", [], |row| {
             row.get::<_, String>(0)
         })
         .map_err(|e| anyhow!("Database not initialized: {}", e))?;
@@ -146,4 +151,16 @@ fn check_db_init() -> Result<()> {
         ));
     }
     Ok(())
+}
+
+
+#[cfg(test)]
+mod tests {
+    use crate::test::test_mod::TestEnv;
+
+    #[test]
+    fn test_init_logger() {
+        let _env = TestEnv::new();
+        crate::duckdb::init_pool();
+    }
 }

@@ -17,7 +17,7 @@ use crate::log::init_logger;
 use crate::monitor::add_watched_path;
 use crate::monitor::del_watched_path;
 use crate::monitor::get_monitor;
-use crate::sqlite::{check_or_init_db, close_pool, init_pool};
+use crate::duckdb::{check_or_init_db, close_pool, init_pool};
 use crate::worker::{TaskStatusStat, Worker};
 
 mod config;
@@ -26,7 +26,7 @@ mod indexer;
 mod log;
 mod monitor;
 mod reader;
-mod sqlite;
+mod duckdb;
 mod test;
 mod utils;
 mod worker;

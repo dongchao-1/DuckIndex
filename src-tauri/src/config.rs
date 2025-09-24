@@ -1,11 +1,11 @@
 use anyhow::Result;
 use log::info;
-use rusqlite::params;
+use duckdb::params;
 use serde::{Deserialize, Serialize};
 use strum::Display;
 use strum::EnumString;
 
-use crate::sqlite::get_conn;
+use crate::duckdb::get_conn;
 
 pub struct Config {}
 
@@ -31,7 +31,7 @@ impl Config {
         T: serde::de::DeserializeOwned,
     {
         let conn = get_conn()?;
-        let value: String = conn.query_one(
+        let value: String = conn.query_row(
             "SELECT value FROM config WHERE key = ?1",
             params![key.to_string()],
             |row| row.get(0),
