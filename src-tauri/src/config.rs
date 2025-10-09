@@ -5,7 +5,8 @@ use serde::{Deserialize, Serialize};
 use strum::Display;
 use strum::EnumString;
 
-use crate::duckdb::get_conn;
+use crate::duckdb::get_read_conn;
+use crate::duckdb::get_write_conn;
 
 pub struct Config {}
 
@@ -30,7 +31,7 @@ impl Config {
     where
         T: serde::de::DeserializeOwned,
     {
-        let conn = get_conn()?;
+        let conn = get_read_conn()?;
         let value: String = conn.query_row(
             "SELECT value FROM config WHERE key = ?1",
             params![key.to_string()],
@@ -45,7 +46,7 @@ impl Config {
         T: ?Sized + Serialize,
     {
         let v = serde_json::to_string(value)?;
-        let conn = get_conn()?;
+        let conn = get_write_conn("config")?;
         conn.execute(
             "UPDATE config SET value = ?2 WHERE key = ?1",
             params![key.to_string(), v],

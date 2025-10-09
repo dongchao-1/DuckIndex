@@ -1,13 +1,13 @@
 [env]
-LEPTONICA_INCLUDE_PATH = "${CARGO_MAKE_WORKING_DIRECTORY}\\vcpkg\\installed\\x64-windows-static\\include"
-LEPTONICA_LINK_PATHS = "${CARGO_MAKE_WORKING_DIRECTORY}\\vcpkg\\installed\\x64-windows-static\\lib"
+LEPTONICA_INCLUDE_PATH = "${CARGO_MAKE_WORKING_DIRECTORY}\\vcpkg\\installed\\x64-windows\\include"
+LEPTONICA_LINK_PATHS = "${CARGO_MAKE_WORKING_DIRECTORY}\\vcpkg\\installed\\x64-windows\\lib"
 LEPTONICA_LINK_LIBS = "leptonica-1.85.0"
-TESSERACT_INCLUDE_PATHS = "${CARGO_MAKE_WORKING_DIRECTORY}\\vcpkg\\installed\\x64-windows-static\\include"
-TESSERACT_LINK_PATHS = "${CARGO_MAKE_WORKING_DIRECTORY}\\vcpkg\\installed\\x64-windows-static\\lib"
+TESSERACT_INCLUDE_PATHS = "${CARGO_MAKE_WORKING_DIRECTORY}\\vcpkg\\installed\\x64-windows\\include"
+TESSERACT_LINK_PATHS = "${CARGO_MAKE_WORKING_DIRECTORY}\\vcpkg\\installed\\x64-windows\\lib"
 TESSERACT_LINK_LIBS = "tesseract55"
 LIBCLANG_PATH = "C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\VC\\Tools\\Llvm\\x64\\bin"
-VCPKG_ROOT = "${CARGO_MAKE_WORKING_DIRECTORY}\\vcpkg"
-DUCKDB_STATIC= "1"
+# VCPKG_ROOT = "${CARGO_MAKE_WORKING_DIRECTORY}\\vcpkg"
+# DUCKDB_STATIC= "1"
 # DUCKDB_LIB_DIR="${CARGO_MAKE_WORKING_DIRECTORY}\\vcpkg\\installed\\x64-windows-static\\lib"
 # DUCKDB_INCLUDE_DIR="${CARGO_MAKE_WORKING_DIRECTORY}\\vcpkg\\installed\\x64-windows-static\\include"
 
@@ -22,8 +22,7 @@ popd
 [tasks.install-tesseract]
 script = '''
 pushd vcpkg && ^
-.\\vcpkg.exe install tesseract:x64-windows-static && ^
-.\\vcpkg.exe install duckdb:x64-windows-static && ^
+.\\vcpkg.exe install tesseract:x64-windows && ^
 popd
 '''
 
@@ -73,7 +72,8 @@ script = '''npm run tauri build'''
 
 [tasks.install]
 description = "安装所有依赖"
-dependencies = ["install-vcpkg",
+dependencies = [
+    "install-vcpkg",
     "install-tesseract",
     "cargo-install",
     "npm-install"
@@ -90,7 +90,8 @@ clear = true
 
 [tasks.clean]
 description = "清理所有依赖"
-dependencies = ["clean-cargo",
+dependencies = [
+    "clean-cargo",
     "clean-npm",
     "clean-vcpkg"
 ]

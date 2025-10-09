@@ -7,7 +7,7 @@ use std::fs;
 use std::path::{Path, MAIN_SEPARATOR};
 
 use crate::reader::Item;
-use crate::duckdb::get_conn;
+use crate::duckdb::{get_write_conn, get_multi_write_conn, get_read_conn};
 use crate::utils::{filename_to_str, parent_to_str, path_to_str};
 
 #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
@@ -63,18 +63,20 @@ impl Indexer {
         let dir_path = path_to_str(directory)?;
         let modified_time = self.get_modified_time(directory)?;
 
-        let directory_id = get_conn()?.query_row(
+        let conn = get_write_conn("directories")?;
+        let directory_id = conn.query_row(
             "INSERT INTO directories (name, path, modified_time) VALUES (?1, ?2, ?3) ON CONFLICT(path) DO UPDATE SET modified_time = ?3 RETURNING id",
             params![&dir_name, &dir_path, &modified_time],
             |row| row.get(0)
         )?;
+        debug!("写入目录成功，ID: {}, 目录: {}, modified_time: {}", dir_path, directory_id, modified_time);
         Ok(directory_id)
     }
 
     pub fn get_directory(&self, directory: &Path) -> Result<SearchResultDirectory> {
         self.check_is_absolute(directory)?;
         let dir_path = path_to_str(directory)?;
-        let conn = get_conn()?;
+        let conn = get_read_conn()?;
         let mut stmt =
             conn.prepare("SELECT name, path, modified_time FROM directories WHERE path = ?1")?;
         let row = stmt.query_row(params![dir_path], |row| {
@@ -91,7 +93,7 @@ impl Indexer {
         self.check_is_absolute(file)?;
         let file_path = parent_to_str(file)?;
         let file_name = filename_to_str(file)?;
-        let conn = get_conn()?;
+        let conn = get_read_conn()?;
         let mut stmt = conn.prepare(
             r"SELECT files.name, directories.path, files.modified_time 
             FROM files
@@ -122,7 +124,7 @@ impl Indexer {
         let file_name = filename_to_str(file)?;
         let modified_time = self.get_modified_time(file)?;
 
-        let mut conn = get_conn()?;
+        let mut conn = get_multi_write_conn(&["files", "items"])?;
         let tx = conn.transaction()?;
         let file_id: i64 = tx.query_row(
             "INSERT INTO files (directory_id, name, modified_time) VALUES (?1, ?2, ?3) ON CONFLICT(directory_id, name) DO UPDATE SET modified_time = ?3 RETURNING id",
@@ -167,7 +169,7 @@ impl Indexer {
         let mut files = Vec::new();
 
         let dir_path = path_to_str(directory)?;
-        let conn = get_conn()?;
+        let conn = get_read_conn()?;
         let mut stmt = conn.prepare(
             "SELECT name, path, modified_time FROM directories WHERE path LIKE ?1 AND path NOT LIKE ?2",
         )?;
@@ -218,7 +220,7 @@ impl Indexer {
         limit: usize,
     ) -> Result<Vec<SearchResultDirectory>> {
         let mut result = Vec::new();
-        let conn = get_conn()?;
+        let conn = get_read_conn()?;
 
         let sql = format!(
             "SELECT name, path, modified_time FROM directories WHERE name LIKE '%{content}%' ORDER BY id LIMIT {limit} OFFSET {offset}"
@@ -245,7 +247,7 @@ impl Indexer {
         limit: usize,
     ) -> Result<Vec<SearchResultFile>> {
         let mut result = Vec::new();
-        let conn = get_conn()?;
+        let conn = get_read_conn()?;
 
         let sql = format!(
             r"SELECT files.name, directories.path, files.modified_time
@@ -276,7 +278,7 @@ impl Indexer {
         limit: usize,
     ) -> Result<Vec<SearchResultItem>> {
         let mut result = Vec::new();
-        let conn = get_conn()?;
+        let conn = get_read_conn()?;
 
         let sql = format!(
             r"SELECT items.content, files.name, directories.path
@@ -304,7 +306,7 @@ impl Indexer {
         self.check_is_absolute(file)?;
         let file_name = filename_to_str(file)?;
         let directory_path = parent_to_str(file)?;
-        let mut conn = get_conn()?;
+        let mut conn = get_multi_write_conn(&["items", "files"])?;
         let tx = conn.transaction()?;
 
         tx.execute(
@@ -341,14 +343,14 @@ impl Indexer {
 
         info!("删除目录记录: {}", directory.display());
         let dir_path = path_to_str(directory)?;
-        let conn = get_conn()?;
+        let conn = get_write_conn("directories")?;
         conn.execute("DELETE FROM directories WHERE path = ?1", params![dir_path])?;
 
         Ok(())
     }
 
     pub fn get_index_status(&self) -> Result<IndexStatusStat> {
-        let conn = get_conn()?;
+        let conn = get_read_conn()?;
         let total_directories: i64 =
             conn.query_row("SELECT COUNT(*) FROM directories", [], |row| row.get(0))?;
         let total_files: i64 =

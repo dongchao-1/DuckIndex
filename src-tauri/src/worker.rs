@@ -20,13 +20,13 @@ use strum::EnumString;
 
 use crate::indexer::Indexer;
 use crate::reader::CompositeReader;
-use crate::duckdb::get_conn;
+use crate::duckdb::{get_read_conn, get_write_conn};
 
-static WORKER_LOCK: OnceCell<Mutex<()>> = OnceCell::new();
+// static WORKER_LOCK: OnceCell<Mutex<()>> = OnceCell::new();
 
-fn get_worker_lock() -> &'static Mutex<()> {
-    WORKER_LOCK.get_or_init(|| Mutex::new(()))
-}
+// fn get_worker_lock() -> &'static Mutex<()> {
+//     WORKER_LOCK.get_or_init(|| Mutex::new(()))
+// }
 
 pub struct Worker {
     indexer: Indexer,
@@ -67,7 +67,7 @@ pub struct TaskStatusStat {
 
 impl Worker {
     pub fn reset_running_tasks() -> Result<()> {
-        let conn = get_conn()?;
+        let conn = get_write_conn("tasks")?;
         conn.execute(
             "UPDATE tasks SET status = ?1, updated_at = ?2, worker = null WHERE status = ?3",
             params![
@@ -91,13 +91,13 @@ impl Worker {
     }
 
     fn add_task(&self, path_type: &PathType, path: &Path, task_type: &TaskType) -> Result<i64> {
-        let conn = get_conn()?;
-
         let path = path
             .to_str()
             .with_context(|| format!("Invalid file path: {path:?}"))?
             .to_string();
         let now = Local::now().to_rfc3339();
+
+        let conn = get_write_conn("tasks")?;
         let id = conn.query_row(
             r"INSERT INTO tasks (path_type, path, task_type, status, created_at, updated_at) 
                 VALUES (?1, ?2, ?3, ?4, ?5, ?6) ON CONFLICT(path_type, path) 
@@ -266,7 +266,7 @@ impl Worker {
     }
 
     pub fn get_tasks_status(&self) -> Result<TaskStatusStat> {
-        let conn = get_conn()?;
+        let conn = get_read_conn()?;
         let (pending, running) = conn.query_row(
             "SELECT COUNT(if(status = ?1, 1, NULL)), COUNT(if(status = ?2, 1, NULL)) FROM tasks",
             params![
@@ -318,10 +318,10 @@ impl Worker {
 
     pub fn process_task(&self) -> Result<()> {
         let task = {
-            let conn = get_conn()?;
-            let _lock = get_worker_lock()
-                .lock()
-                .map_err(|e| anyhow!("获取worker锁失败: {}", e))?;
+            let conn = get_write_conn("tasks")?;
+            // let _lock = get_worker_lock()
+            //     .lock()
+            //     .map_err(|e| anyhow!("获取worker锁失败: {}", e))?;
 
             conn.query_row(
                 r"UPDATE tasks
@@ -423,7 +423,7 @@ impl Worker {
                     }
                 }
                 debug!("处理任务完成: {}, {}, {}", id, path_type, path.display());
-                let conn = get_conn()?;
+                let conn = get_write_conn("tasks")?;
                 conn.execute("delete from tasks where id = ?", params![id])?;
             }
             Err(duckdb::Error::QueryReturnedNoRows) => {
