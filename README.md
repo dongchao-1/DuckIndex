@@ -65,14 +65,14 @@ choco install nodejs-lts --version=22.19.0 -y
 ```powershell
 choco install visualstudio2022enterprise --version=117.14.14 -y --package-parameters "--add Microsoft.VisualStudio.Component.VC.Tools.x86.x64 --add Microsoft.VisualStudio.Component.VC.CMake.Project --add Microsoft.VisualStudio.Component.VC.Llvm.Clang --add Microsoft.VisualStudio.Component.VC.Llvm.ClangToolset --add Microsoft.VisualStudio.Component.Windows11SDK.22621"
 ```
-* 安装cargo-make: 
+* 安装just: 
 ```powershell
-cargo install cargo-make
+cargo install just
 ```
 
 ### 2. 安装依赖
 ```powershell
-cargo make install
+just install
 ```
 
 ### 3. 编写代码
@@ -80,25 +80,25 @@ cargo make install
 
 ### 4. 运行测试
 ```powershell
-cargo make test
-$env:RUST_BACKTRACE="full"; $env:DUCKINDEX_LOG_LEVEL="debug"; cargo make test
+just test
+just test-debug
 ```
 
 ### 5. 运行开发版本
 ```powershell
-cargo make dev
-$env:RUST_BACKTRACE="full"; $env:DUCKINDEX_LOG_LEVEL="debug"; cargo make dev
+just dev
+just dev-debug
 ```
 
 ### 6. 检查test、clippy、fmt
 ```powershell
-cargo make format
-cargo make check
+just format
+just check
 ```
 
 ### 7. 构建生产版本
 ```powershell
-cargo make release
+just release
 ```
 
 ### 重要路径

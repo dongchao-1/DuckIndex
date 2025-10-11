@@ -11,24 +11,23 @@ jobs:
     runs-on: windows-latest
 
     steps:
+      - uses: extractions/setup-just@v3
+
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install cargo-make
-        run: |
-          cargo install cargo-make
-
       - name: Run clean
         run: |
-          cargo make clean
+          just clean
 
       - name: Run install
         run: |
-          cargo make install
+          just install
 
       - name: Run check
         run: |
-          cargo make check
+          just check
 
       - name: Run release
-        run: cargo make release
+        run: |
+          just release
