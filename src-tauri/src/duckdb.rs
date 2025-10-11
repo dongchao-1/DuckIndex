@@ -141,11 +141,9 @@ pub fn check_or_init_db() -> Result<()> {
         tx.execute_batch(
             r#"
             -- config.rs
-            DROP SEQUENCE IF EXISTS config_id;
-            CREATE SEQUENCE config_id START 1;
             DROP TABLE IF EXISTS config;
             CREATE TABLE config (
-                id INTEGER PRIMARY KEY DEFAULT NEXTVAL('config_id'),
+                id UUID PRIMARY KEY DEFAULT uuidv7(),
                 key TEXT NOT NULL,
                 value TEXT NOT NULL,
                 unique (key)
@@ -154,11 +152,9 @@ pub fn check_or_init_db() -> Result<()> {
             INSERT INTO config (key, value) VALUES ('ExtensionWhitelist', '[{"label":"文档","is_extension":false,"children":[{"label":"txt","is_extension":true,"enabled":true},{"label":"md","is_extension":true,"enabled":true},{"label":"markdown","is_extension":true,"enabled":true},{"label":"docx","is_extension":true,"enabled":true},{"label":"pptx","is_extension":true,"enabled":true},{"label":"pdf","is_extension":true,"enabled":true}]}, {"label":"数据","is_extension":false,"children":[{"label":"xlsx","is_extension":true,"enabled":false}]}, {"label":"图片","is_extension":false,"children":[{"label":"jpg","is_extension":true,"enabled":true},{"label":"jpeg","is_extension":true,"enabled":true},{"label":"png","is_extension":true,"enabled":true},{"label":"tif","is_extension":true,"enabled":true},{"label":"tiff","is_extension":true,"enabled":true},{"label":"gif","is_extension":true,"enabled":true},{"label":"webp","is_extension":true,"enabled":true}]}]');
 
             -- indexer.rs
-            DROP SEQUENCE IF EXISTS directories_id;
-            CREATE SEQUENCE directories_id START 1;
             DROP TABLE IF EXISTS directories;
             CREATE TABLE directories (
-                id INTEGER PRIMARY KEY DEFAULT NEXTVAL('directories_id'),
+                id UUID PRIMARY KEY DEFAULT uuidv7(),
                 name TEXT NOT NULL,
                 path TEXT NOT NULL,
                 modified_time TEXT NOT NULL,
@@ -166,34 +162,28 @@ pub fn check_or_init_db() -> Result<()> {
             );
             CREATE INDEX idx_directories_name ON directories (name);
 
-            DROP SEQUENCE IF EXISTS files_id;
-            CREATE SEQUENCE files_id START 1;
             DROP TABLE IF EXISTS files;
             CREATE TABLE files (
-                id INTEGER PRIMARY KEY DEFAULT NEXTVAL('files_id'),
-                directory_id INTEGER NOT NULL,
+                id UUID PRIMARY KEY DEFAULT uuidv7(),
+                directory_id UUID NOT NULL,
                 name TEXT NOT NULL,
                 modified_time TEXT NOT NULL,
                 UNIQUE (directory_id, name)
             );
             CREATE INDEX idx_files_name ON files (name);
 
-            DROP SEQUENCE IF EXISTS items_id;
-            CREATE SEQUENCE items_id START 1;
             DROP TABLE IF EXISTS items;
             CREATE TABLE items (
-                id INTEGER PRIMARY KEY DEFAULT NEXTVAL('items_id'),
-                file_id INTEGER NOT NULL,
+                id UUID PRIMARY KEY DEFAULT uuidv7(),
+                file_id UUID NOT NULL,
                 content TEXT NOT NULL
             );
             CREATE INDEX idx_items_file_id ON items (file_id);
 
             -- worker.rs
-            DROP SEQUENCE IF EXISTS tasks_id;
-            CREATE SEQUENCE tasks_id START 1;
             DROP TABLE IF EXISTS tasks;
             CREATE TABLE tasks (
-                id INTEGER PRIMARY KEY DEFAULT NEXTVAL('tasks_id'),
+                id UUID PRIMARY KEY DEFAULT uuidv7(),
                 path_type TEXT NOT NULL,
                 path TEXT NOT NULL,
                 task_type TEXT NOT NULL,

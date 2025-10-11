@@ -91,7 +91,7 @@ impl Worker {
         })
     }
 
-    fn add_task(&self, path_type: &PathType, path: &Path, task_type: &TaskType) -> Result<i64> {
+    fn add_task(&self, path_type: &PathType, path: &Path, task_type: &TaskType) -> Result<String> {
         let path = path
             .to_str()
             .with_context(|| format!("Invalid file path: {path:?}"))?
@@ -114,7 +114,7 @@ impl Worker {
                 now
             ],
             |row| {
-                let id = row.get::<_, i64>(0)?;
+                let id = row.get::<_, String>(0)?;
                 Ok(id)
             },
         )?;
@@ -318,7 +318,7 @@ impl Worker {
                     }
                 })
                 .unwrap();
-            thread::sleep(Duration::from_millis(86)); // 错开启动时间，避免duckdb事务问题
+            // thread::sleep(Duration::from_millis(86)); // 错开启动时间，避免duckdb事务问题
         }
         Ok(())
     }
@@ -345,7 +345,7 @@ impl Worker {
                     TaskStatus::Pending.to_string()
                 ],
                 |row| {
-                    let id = row.get::<_, i64>(0)?;
+                    let id = row.get::<_, String>(0)?;
                     let path_type = row.get::<_, String>(1)?;
                     let path = row.get::<_, String>(2)?;
                     let task_type = row.get::<_, String>(3)?;

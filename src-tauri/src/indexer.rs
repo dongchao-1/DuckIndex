@@ -57,7 +57,7 @@ impl Indexer {
         Ok(modified_datetime.to_rfc3339())
     }
 
-    pub fn write_directory(&self, directory: &Path) -> Result<i64> {
+    pub fn write_directory(&self, directory: &Path) -> Result<String> {
         self.check_is_absolute(directory)?;
         let dir_name = filename_to_str(directory)?;
         let dir_path = path_to_str(directory)?;
@@ -66,13 +66,38 @@ impl Indexer {
         let mut conn = get_write_conn()?;
         let conn = conn.as_mut().ok_or_else(|| anyhow!("Database write connection is not initialized"))?;
         let tx = conn.transaction()?;
-        let directory_id = tx.query_row(
-            "INSERT INTO directories (name, path, modified_time) VALUES (?1, ?2, ?3) ON CONFLICT(path) DO UPDATE SET modified_time = ?3 RETURNING id",
-            params![&dir_name, &dir_path, &modified_time],
-            |row| row.get(0)
-        )?;
+
+        let (directory_id, directory_modified_time): (String, String) = tx.query_row(
+            "select id, modified_time from directories where path = ?1",
+            params![&dir_path],
+            |row| Ok((row.get(0)?, row.get(1)?))
+        ).or_else(|e| {
+            match e {
+                duckdb::Error::QueryReturnedNoRows => {
+                    // 目录不存在，插入新记录
+                    let (directory_id, directory_modified_time): (String, String) = tx.query_row(
+                        "INSERT INTO directories (name, path, modified_time) VALUES (?1, ?2, ?3) RETURNING id, modified_time",
+                        params![&dir_name, &dir_path, &modified_time],
+                        |row| Ok((row.get(0)?, row.get(1)?))
+                    )?;
+                    debug!("写入新目录: {directory_id}, path: {dir_path}, modified_time: {modified_time}");
+                    Ok((directory_id, directory_modified_time))
+                },
+                _ => Err(e),
+            }
+        })?;
+
+        if directory_modified_time != modified_time {
+            // 目录修改时间不同，更新记录
+            tx.execute(
+                "UPDATE directories SET modified_time = ?2 WHERE id = ?1",
+                params![&directory_id, &modified_time],
+            )?;
+            debug!("更新目录时间: {directory_id}, path: {dir_path}, modified_time: {modified_time}");
+        }
+
         tx.commit()?;
-        debug!("写入目录成功，ID: {}, 目录: {}, modified_time: {}", dir_path, directory_id, modified_time);
+
         Ok(directory_id)
     }
 
@@ -114,7 +139,7 @@ impl Indexer {
         Ok(row)
     }
 
-    pub fn write_file_items(&self, file: &Path, items: Vec<Item>) -> Result<i64> {
+    pub fn write_file_items(&self, file: &Path, items: Vec<Item>) -> Result<String> {
         self.check_is_absolute(file)?;
         let parent_dir = file.parent().with_context(|| {
             format!(
@@ -130,7 +155,7 @@ impl Indexer {
         let mut conn = get_write_conn()?;
         let conn = conn.as_mut().ok_or_else(|| anyhow!("Database write connection is not initialized"))?;
         let tx = conn.transaction()?;
-        let file_id: i64 = tx.query_row(
+        let file_id: String = tx.query_row(
             "INSERT INTO files (directory_id, name, modified_time) VALUES (?1, ?2, ?3) ON CONFLICT(directory_id, name) DO UPDATE SET modified_time = ?3 RETURNING id",
             params![&directory_id, file_name, &modified_time],
             |row| row.get(0),

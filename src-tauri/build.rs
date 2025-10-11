@@ -12,14 +12,7 @@ fn main() {
             vcpkg_base.display()
         );
     }
-    // let vcpkg_include = vcpkg_base
-    //     .join("installed")
-    //     .join("x64-windows")
-    //     .join("include");
-    // let vcpkg_lib = vcpkg_base
-    //     .join("installed")
-    //     .join("x64-windows")
-    //     .join("lib");
+
     let vcpkg_bin = vcpkg_base
         .join("installed")
         .join("x64-windows")
@@ -28,26 +21,7 @@ fn main() {
     let target_dir = Path::new(&out_dir).parent().unwrap().parent().unwrap().parent().unwrap();
     println!("cargo:info=Target directory: {}", target_dir.display());
 
-    // println!(
-    //     "cargo:rustc-env=LEPTONICA_INCLUDE_PATH={}",
-    //     vcpkg_include.display()
-    // );
-    // println!(
-    //     "cargo:rustc-env=LEPTONICA_LINK_PATHS={}",
-    //     vcpkg_lib.display()
-    // );
-    // println!("cargo:rustc-env=LEPTONICA_LINK_LIBS=leptonica-1.85.0");
-    // println!(
-    //     "cargo:rustc-env=TESSERACT_INCLUDE_PATHS={}",
-    //     vcpkg_include.display()
-    // );
-    // println!(
-    //     "cargo:rustc-env=TESSERACT_LINK_PATHS={}",
-    //     vcpkg_lib.display()
-    // );
-    // println!("cargo:rustc-env=TESSERACT_LINK_LIBS=tesseract55");
-
-    // 读取目录下所有 .lib 文件
+    // 读取目录下所有 .dll 文件
     if vcpkg_bin.is_dir() {
         match fs::read_dir(&vcpkg_bin) {
             Ok(entries) => {
