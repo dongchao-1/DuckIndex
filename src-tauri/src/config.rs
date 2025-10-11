@@ -1,6 +1,6 @@
-use anyhow::{Result, anyhow};
-use log::info;
+use anyhow::{anyhow, Result};
 use duckdb::params;
+use log::info;
 use serde::{Deserialize, Serialize};
 use strum::Display;
 use strum::EnumString;
@@ -47,7 +47,9 @@ impl Config {
     {
         let v = serde_json::to_string(value)?;
         let mut conn = get_write_conn()?;
-        let conn = conn.as_mut().ok_or_else(|| anyhow!("Database write connection is not initialized"))?;
+        let conn = conn
+            .as_mut()
+            .ok_or_else(|| anyhow!("Database write connection is not initialized"))?;
         let tx = conn.transaction()?;
         tx.execute(
             "UPDATE config SET value = ?2 WHERE key = ?1",

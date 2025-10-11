@@ -1,10 +1,10 @@
 use anyhow::Context;
 use anyhow::{anyhow, Result};
 use chrono::Local;
+use duckdb::params;
 use log::debug;
 use log::error;
 use log::info;
-use duckdb::params;
 use serde::Serialize;
 use std::collections::HashSet;
 use std::fs;
@@ -16,9 +16,9 @@ use std::time::Duration;
 use strum::Display;
 use strum::EnumString;
 
+use crate::duckdb::{get_read_conn, get_write_conn};
 use crate::indexer::Indexer;
 use crate::reader::CompositeReader;
-use crate::duckdb::{get_read_conn, get_write_conn};
 
 // static WORKER_LOCK: OnceCell<Mutex<()>> = OnceCell::new();
 
@@ -66,7 +66,9 @@ pub struct TaskStatusStat {
 impl Worker {
     pub fn reset_running_tasks() -> Result<()> {
         let mut conn = get_write_conn()?;
-        let conn = conn.as_mut().ok_or_else(|| anyhow!("Database write connection is not initialized"))?;
+        let conn = conn
+            .as_mut()
+            .ok_or_else(|| anyhow!("Database write connection is not initialized"))?;
         let tx = conn.transaction()?;
         tx.execute(
             "UPDATE tasks SET status = ?1, updated_at = ?2, worker = null WHERE status = ?3",
@@ -99,7 +101,9 @@ impl Worker {
         let now = Local::now().to_rfc3339();
 
         let mut conn = get_write_conn()?;
-        let conn = conn.as_mut().ok_or_else(|| anyhow!("Database write connection is not initialized"))?;
+        let conn = conn
+            .as_mut()
+            .ok_or_else(|| anyhow!("Database write connection is not initialized"))?;
         let tx = conn.transaction()?;
         let id = tx.query_row(
             r"INSERT INTO tasks (path_type, path, task_type, status, created_at, updated_at) 
@@ -326,7 +330,9 @@ impl Worker {
     pub fn process_task(&self) -> Result<()> {
         let task = {
             let mut conn = get_write_conn()?;
-            let conn = conn.as_mut().ok_or_else(|| anyhow!("Database write connection is not initialized"))?;
+            let conn = conn
+                .as_mut()
+                .ok_or_else(|| anyhow!("Database write connection is not initialized"))?;
             let tx = conn.transaction()?;
             let row = tx.query_row(
                 r"UPDATE tasks
@@ -431,7 +437,9 @@ impl Worker {
                 }
                 debug!("处理任务完成: {}, {}, {}", id, path_type, path.display());
                 let mut conn = get_write_conn()?;
-                let conn = conn.as_mut().ok_or_else(|| anyhow!("Database write connection is not initialized"))?;
+                let conn = conn
+                    .as_mut()
+                    .ok_or_else(|| anyhow!("Database write connection is not initialized"))?;
                 let tx = conn.transaction()?;
                 tx.execute("delete from tasks where id = ?", params![id])?;
                 tx.commit()?;

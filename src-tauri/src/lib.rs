@@ -8,6 +8,7 @@ use tauri::{async_runtime, RunEvent};
 use thiserror::Error;
 
 use crate::config::{Config, ExtensionConfigTree};
+use crate::duckdb::{check_or_init_db, close_pool, init_pool};
 use crate::indexer::IndexStatusStat;
 use crate::indexer::Indexer;
 use crate::indexer::SearchResultDirectory;
@@ -17,16 +18,15 @@ use crate::log::init_logger;
 use crate::monitor::add_watched_path;
 use crate::monitor::del_watched_path;
 use crate::monitor::get_monitor;
-use crate::duckdb::{check_or_init_db, close_pool, init_pool};
 use crate::worker::{TaskStatusStat, Worker};
 
 mod config;
 mod dirs;
+mod duckdb;
 mod indexer;
 mod log;
 mod monitor;
 mod reader;
-mod duckdb;
 mod test;
 mod utils;
 mod worker;

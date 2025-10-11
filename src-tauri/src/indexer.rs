@@ -1,13 +1,13 @@
 use anyhow::{anyhow, Context, Result};
 use chrono::{DateTime, Local};
-use log::{debug, info};
 use duckdb::params;
+use log::{debug, info};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, MAIN_SEPARATOR};
 
+use crate::duckdb::{get_read_conn, get_write_conn};
 use crate::reader::Item;
-use crate::duckdb::{get_write_conn, get_read_conn};
 use crate::utils::{filename_to_str, parent_to_str, path_to_str};
 
 #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
@@ -64,7 +64,9 @@ impl Indexer {
         let modified_time = self.get_modified_time(directory)?;
 
         let mut conn = get_write_conn()?;
-        let conn = conn.as_mut().ok_or_else(|| anyhow!("Database write connection is not initialized"))?;
+        let conn = conn
+            .as_mut()
+            .ok_or_else(|| anyhow!("Database write connection is not initialized"))?;
         let tx = conn.transaction()?;
 
         let (directory_id, directory_modified_time): (String, String) = tx.query_row(
@@ -93,7 +95,9 @@ impl Indexer {
                 "UPDATE directories SET modified_time = ?2 WHERE id = ?1",
                 params![&directory_id, &modified_time],
             )?;
-            debug!("更新目录时间: {directory_id}, path: {dir_path}, modified_time: {modified_time}");
+            debug!(
+                "更新目录时间: {directory_id}, path: {dir_path}, modified_time: {modified_time}"
+            );
         }
 
         tx.commit()?;
@@ -153,7 +157,9 @@ impl Indexer {
         let modified_time = self.get_modified_time(file)?;
 
         let mut conn = get_write_conn()?;
-        let conn = conn.as_mut().ok_or_else(|| anyhow!("Database write connection is not initialized"))?;
+        let conn = conn
+            .as_mut()
+            .ok_or_else(|| anyhow!("Database write connection is not initialized"))?;
         let tx = conn.transaction()?;
         let file_id: String = tx.query_row(
             "INSERT INTO files (directory_id, name, modified_time) VALUES (?1, ?2, ?3) ON CONFLICT(directory_id, name) DO UPDATE SET modified_time = ?3 RETURNING id",
@@ -336,7 +342,9 @@ impl Indexer {
         let file_name = filename_to_str(file)?;
         let directory_path = parent_to_str(file)?;
         let mut conn = get_write_conn()?;
-        let conn = conn.as_mut().ok_or_else(|| anyhow!("Database write connection is not initialized"))?;
+        let conn = conn
+            .as_mut()
+            .ok_or_else(|| anyhow!("Database write connection is not initialized"))?;
         let tx = conn.transaction()?;
 
         tx.execute(
@@ -374,7 +382,9 @@ impl Indexer {
         info!("删除目录记录: {}", directory.display());
         let dir_path = path_to_str(directory)?;
         let mut conn = get_write_conn()?;
-        let conn = conn.as_mut().ok_or_else(|| anyhow!("Database write connection is not initialized"))?;
+        let conn = conn
+            .as_mut()
+            .ok_or_else(|| anyhow!("Database write connection is not initialized"))?;
         let tx = conn.transaction()?;
         tx.execute("DELETE FROM directories WHERE path = ?1", params![dir_path])?;
         tx.commit()?;

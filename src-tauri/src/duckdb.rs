@@ -1,10 +1,10 @@
-use std::{sync::{Mutex, MutexGuard}, thread, time::Duration};
+use std::sync::{Mutex, MutexGuard};
 
 use anyhow::{anyhow, Result};
+use duckdb::DuckdbConnectionManager;
 use log::{debug, info};
 use once_cell::sync::OnceCell;
 use r2d2::{Pool, PooledConnection};
-use duckdb::DuckdbConnectionManager;
 
 use crate::dirs::get_index_dir;
 
@@ -14,7 +14,6 @@ use std::ops::{Deref, DerefMut};
 pub struct DebuggingMutexGuard<'a, T> {
     guard: MutexGuard<'a, T>,
     name: &'static str,
-    release_sleep: Duration,
 }
 
 impl<T> Drop for DebuggingMutexGuard<'_, T> {
@@ -42,15 +41,13 @@ impl<T> DerefMut for DebuggingMutexGuard<'_, T> {
 pub struct DebuggingMutex<T> {
     mutex: Mutex<T>,
     name: &'static str,
-    release_sleep: Duration,
 }
 
 impl<T> DebuggingMutex<T> {
-    pub fn new(data: T, name: &'static str, release_sleep: Duration) -> Self {
+    pub fn new(data: T, name: &'static str) -> Self {
         Self {
             mutex: Mutex::new(data),
             name,
-            release_sleep,
         }
     }
 
@@ -61,35 +58,34 @@ impl<T> DebuggingMutex<T> {
         DebuggingMutexGuard {
             guard,
             name: self.name,
-            release_sleep: self.release_sleep,
         }
     }
 }
 
 // 全局静态变量
 static POOL: OnceCell<DebuggingMutex<Option<Pool<DuckdbConnectionManager>>>> = OnceCell::new();
-static WRITE_CONN: OnceCell<DebuggingMutex<Option<PooledConnection<DuckdbConnectionManager>>>> = OnceCell::new();
+static WRITE_CONN: OnceCell<DebuggingMutex<Option<PooledConnection<DuckdbConnectionManager>>>> =
+    OnceCell::new();
 
 pub fn init_pool() {
     POOL.get_or_init(|| {
         info!("初始化连接池...");
         let index_path = get_index_dir().join("index.db");
 
-        let manager = DuckdbConnectionManager::file(index_path).expect("Failed to create DuckDB manager");
-        DebuggingMutex::new(Some(
-            Pool::new(manager).expect("Failed to create pool"),
-        ), "DB_POOL", Duration::ZERO)
+        let manager =
+            DuckdbConnectionManager::file(index_path).expect("Failed to create DuckDB manager");
+        DebuggingMutex::new(
+            Some(Pool::new(manager).expect("Failed to create pool")),
+            "DB_POOL",
+        )
     });
-    
+
     WRITE_CONN.get_or_init(|| {
-        let conn = POOL
-            .get()
-            .expect("Pool not initialized")
-            .lock();
+        let conn = POOL.get().expect("Pool not initialized").lock();
 
         let pool_ref = conn.as_ref().expect("Database pool is not initialized");
         let pooled_conn = pool_ref.get().expect("Failed to get connection from pool");
-        DebuggingMutex::new(Some(pooled_conn), "DB_WRITE_CONN", Duration::from_millis(100))
+        DebuggingMutex::new(Some(pooled_conn), "DB_WRITE_CONN")
     });
 }
 
@@ -102,11 +98,12 @@ pub fn get_read_conn() -> Result<PooledConnection<DuckdbConnectionManager>> {
         .as_ref()
         .ok_or_else(|| anyhow!("Database pool is not initialized"))?
         .get()?;
-    
+
     Ok(conn)
 }
 
-pub fn get_write_conn() -> Result<DebuggingMutexGuard<'static, Option<PooledConnection<DuckdbConnectionManager>>>> {
+pub fn get_write_conn(
+) -> Result<DebuggingMutexGuard<'static, Option<PooledConnection<DuckdbConnectionManager>>>> {
     debug!("尝试获取写锁...");
     let conn_lock = WRITE_CONN.get().expect("Write connection not initialized");
     let conn = conn_lock.lock();
@@ -119,11 +116,12 @@ pub fn close_pool() {
     let mut conn_lock = get_write_conn().expect("Failed to get connection");
     let conn = conn_lock.take();
     if let Some(pooled_conn) = conn {
-        pooled_conn.execute_batch("FORCE CHECKPOINT;")
+        pooled_conn
+            .execute_batch("FORCE CHECKPOINT;")
             .expect("Failed to execute batch");
         info!("写连接已关闭。");
     }
-    
+
     if let Some(pool_arc) = POOL.get() {
         let mut pool_option_lock = pool_arc.lock();
         let pool_option = pool_option_lock.take();
@@ -136,7 +134,9 @@ pub fn close_pool() {
 pub fn check_or_init_db() -> Result<()> {
     if check_db_init().is_err() {
         let mut conn = get_write_conn()?;
-        let conn = conn.as_mut().ok_or_else(|| anyhow!("Database write connection is not initialized"))?;
+        let conn = conn
+            .as_mut()
+            .ok_or_else(|| anyhow!("Database write connection is not initialized"))?;
         let tx = conn.transaction()?;
         tx.execute_batch(
             r#"
@@ -225,7 +225,6 @@ fn check_db_init() -> Result<()> {
     }
     Ok(())
 }
-
 
 #[cfg(test)]
 mod tests {

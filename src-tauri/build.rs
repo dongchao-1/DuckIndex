@@ -13,12 +13,15 @@ fn main() {
         );
     }
 
-    let vcpkg_bin = vcpkg_base
-        .join("installed")
-        .join("x64-windows")
-        .join("bin");
+    let vcpkg_bin = vcpkg_base.join("installed").join("x64-windows").join("bin");
     let out_dir = env::var("OUT_DIR").expect("OUT_DIR not set");
-    let target_dir = Path::new(&out_dir).parent().unwrap().parent().unwrap().parent().unwrap();
+    let target_dir = Path::new(&out_dir)
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap();
     println!("cargo:info=Target directory: {}", target_dir.display());
 
     // 读取目录下所有 .dll 文件
@@ -31,7 +34,13 @@ fn main() {
                         if extension == "dll" {
                             if let Some(file_name) = path.file_name() {
                                 let dest_path = target_dir.join(file_name);
-                                fs::copy(&path, &dest_path).unwrap_or_else(|_| panic!("Failed to copy {} to {}", path.display(), dest_path.display()));
+                                fs::copy(&path, &dest_path).unwrap_or_else(|_| {
+                                    panic!(
+                                        "Failed to copy {} to {}",
+                                        path.display(),
+                                        dest_path.display()
+                                    )
+                                });
                             }
                         }
                     }

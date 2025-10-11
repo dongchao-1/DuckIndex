@@ -1,6 +1,6 @@
 #[cfg(test)]
 pub mod test_mod {
-    use crate::{setup_backend, duckdb::close_pool};
+    use crate::{duckdb::close_pool, setup_backend};
     use chrono::Local;
     use std::env;
     use tempfile::Builder;
