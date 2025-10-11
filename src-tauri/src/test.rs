@@ -38,8 +38,6 @@ pub mod test_mod {
     impl Drop for TestEnv {
         fn drop(&mut self) {
             close_pool();
-            // 这里会自动清理 temp_dir
-            // 因为 TempDir 实现了 Drop，会自动删除临时目录
         }
     }
 

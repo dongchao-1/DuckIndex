@@ -67,13 +67,13 @@ async fn add_index_path(path: String) -> TauriResult<()> {
         let new_path = Path::new(&path);
         add_watched_path(new_path)?;
 
-        let worker = Worker::new()?;
-        info!("开始索引目录: {}", new_path.display());
-        worker.submit_index_all_files(new_path)?;
-
         let mut paths = Config::get_index_dir_paths()?;
         paths.push(path.clone());
         Config::set_index_dir_paths(paths)?;
+
+        let worker = Worker::new()?;
+        info!("开始索引目录: {}", new_path.display());
+        worker.submit_index_all_files(new_path)?;
 
         Ok(())
     })

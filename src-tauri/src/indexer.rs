@@ -7,7 +7,7 @@ use std::fs;
 use std::path::{Path, MAIN_SEPARATOR};
 
 use crate::reader::Item;
-use crate::duckdb::{get_write_conn, get_multi_write_conn, get_read_conn};
+use crate::duckdb::{get_write_conn, get_read_conn};
 use crate::utils::{filename_to_str, parent_to_str, path_to_str};
 
 #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
@@ -63,12 +63,15 @@ impl Indexer {
         let dir_path = path_to_str(directory)?;
         let modified_time = self.get_modified_time(directory)?;
 
-        let conn = get_write_conn("directories")?;
-        let directory_id = conn.query_row(
+        let mut conn = get_write_conn()?;
+        let conn = conn.as_mut().ok_or_else(|| anyhow!("Database write connection is not initialized"))?;
+        let tx = conn.transaction()?;
+        let directory_id = tx.query_row(
             "INSERT INTO directories (name, path, modified_time) VALUES (?1, ?2, ?3) ON CONFLICT(path) DO UPDATE SET modified_time = ?3 RETURNING id",
             params![&dir_name, &dir_path, &modified_time],
             |row| row.get(0)
         )?;
+        tx.commit()?;
         debug!("写入目录成功，ID: {}, 目录: {}, modified_time: {}", dir_path, directory_id, modified_time);
         Ok(directory_id)
     }
@@ -124,7 +127,8 @@ impl Indexer {
         let file_name = filename_to_str(file)?;
         let modified_time = self.get_modified_time(file)?;
 
-        let mut conn = get_multi_write_conn(&["files", "items"])?;
+        let mut conn = get_write_conn()?;
+        let conn = conn.as_mut().ok_or_else(|| anyhow!("Database write connection is not initialized"))?;
         let tx = conn.transaction()?;
         let file_id: i64 = tx.query_row(
             "INSERT INTO files (directory_id, name, modified_time) VALUES (?1, ?2, ?3) ON CONFLICT(directory_id, name) DO UPDATE SET modified_time = ?3 RETURNING id",
@@ -306,7 +310,8 @@ impl Indexer {
         self.check_is_absolute(file)?;
         let file_name = filename_to_str(file)?;
         let directory_path = parent_to_str(file)?;
-        let mut conn = get_multi_write_conn(&["items", "files"])?;
+        let mut conn = get_write_conn()?;
+        let conn = conn.as_mut().ok_or_else(|| anyhow!("Database write connection is not initialized"))?;
         let tx = conn.transaction()?;
 
         tx.execute(
@@ -343,8 +348,11 @@ impl Indexer {
 
         info!("删除目录记录: {}", directory.display());
         let dir_path = path_to_str(directory)?;
-        let conn = get_write_conn("directories")?;
-        conn.execute("DELETE FROM directories WHERE path = ?1", params![dir_path])?;
+        let mut conn = get_write_conn()?;
+        let conn = conn.as_mut().ok_or_else(|| anyhow!("Database write connection is not initialized"))?;
+        let tx = conn.transaction()?;
+        tx.execute("DELETE FROM directories WHERE path = ?1", params![dir_path])?;
+        tx.commit()?;
 
         Ok(())
     }

@@ -4,7 +4,6 @@ use chrono::Local;
 use log::debug;
 use log::error;
 use log::info;
-use once_cell::sync::OnceCell;
 use duckdb::params;
 use serde::Serialize;
 use std::collections::HashSet;
@@ -12,7 +11,6 @@ use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
 use std::str::FromStr;
-use std::sync::Mutex;
 use std::thread;
 use std::time::Duration;
 use strum::Display;
@@ -67,8 +65,10 @@ pub struct TaskStatusStat {
 
 impl Worker {
     pub fn reset_running_tasks() -> Result<()> {
-        let conn = get_write_conn("tasks")?;
-        conn.execute(
+        let mut conn = get_write_conn()?;
+        let conn = conn.as_mut().ok_or_else(|| anyhow!("Database write connection is not initialized"))?;
+        let tx = conn.transaction()?;
+        tx.execute(
             "UPDATE tasks SET status = ?1, updated_at = ?2, worker = null WHERE status = ?3",
             params![
                 TaskStatus::Pending.to_string(),
@@ -76,6 +76,7 @@ impl Worker {
                 TaskStatus::Running.to_string()
             ],
         )?;
+        tx.commit()?;
         Ok(())
     }
 
@@ -97,8 +98,10 @@ impl Worker {
             .to_string();
         let now = Local::now().to_rfc3339();
 
-        let conn = get_write_conn("tasks")?;
-        let id = conn.query_row(
+        let mut conn = get_write_conn()?;
+        let conn = conn.as_mut().ok_or_else(|| anyhow!("Database write connection is not initialized"))?;
+        let tx = conn.transaction()?;
+        let id = tx.query_row(
             r"INSERT INTO tasks (path_type, path, task_type, status, created_at, updated_at) 
                 VALUES (?1, ?2, ?3, ?4, ?5, ?6) ON CONFLICT(path_type, path) 
                 DO UPDATE SET updated_at = ?6 RETURNING id",
@@ -115,6 +118,7 @@ impl Worker {
                 Ok(id)
             },
         )?;
+        tx.commit()?;
         Ok(id)
     }
 
@@ -300,6 +304,7 @@ impl Worker {
             thread::Builder::new()
                 .name(format!("index-worker-thread-{i}"))
                 .spawn(move || {
+                    info!("索引线程 {i} 启动");
                     let worker = Worker::new().unwrap();
                     loop {
                         match worker.process_task() {
@@ -307,23 +312,23 @@ impl Worker {
                             Err(e) => {
                                 error!("处理任务失败: {e}");
                                 error!("{}", e.backtrace());
+                                panic!("进程退出!");
                             }
                         }
                     }
                 })
                 .unwrap();
+            thread::sleep(Duration::from_millis(86)); // 错开启动时间，避免duckdb事务问题
         }
         Ok(())
     }
 
     pub fn process_task(&self) -> Result<()> {
         let task = {
-            let conn = get_write_conn("tasks")?;
-            // let _lock = get_worker_lock()
-            //     .lock()
-            //     .map_err(|e| anyhow!("获取worker锁失败: {}", e))?;
-
-            conn.query_row(
+            let mut conn = get_write_conn()?;
+            let conn = conn.as_mut().ok_or_else(|| anyhow!("Database write connection is not initialized"))?;
+            let tx = conn.transaction()?;
+            let row = tx.query_row(
                 r"UPDATE tasks
                 SET status = ?1, updated_at = ?2, worker = ?3
                 WHERE id = (
@@ -346,7 +351,9 @@ impl Worker {
                     let task_type = row.get::<_, String>(3)?;
                     Ok((id, path_type, path, task_type))
                 },
-            )
+            );
+            tx.commit()?;
+            row
         };
 
         match task {
@@ -423,8 +430,11 @@ impl Worker {
                     }
                 }
                 debug!("处理任务完成: {}, {}, {}", id, path_type, path.display());
-                let conn = get_write_conn("tasks")?;
-                conn.execute("delete from tasks where id = ?", params![id])?;
+                let mut conn = get_write_conn()?;
+                let conn = conn.as_mut().ok_or_else(|| anyhow!("Database write connection is not initialized"))?;
+                let tx = conn.transaction()?;
+                tx.execute("delete from tasks where id = ?", params![id])?;
+                tx.commit()?;
             }
             Err(duckdb::Error::QueryReturnedNoRows) => {
                 // 没有待处理的任务，休息1s

@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{Result, anyhow};
 use log::info;
 use duckdb::params;
 use serde::{Deserialize, Serialize};
@@ -46,11 +46,14 @@ impl Config {
         T: ?Sized + Serialize,
     {
         let v = serde_json::to_string(value)?;
-        let conn = get_write_conn("config")?;
-        conn.execute(
+        let mut conn = get_write_conn()?;
+        let conn = conn.as_mut().ok_or_else(|| anyhow!("Database write connection is not initialized"))?;
+        let tx = conn.transaction()?;
+        tx.execute(
             "UPDATE config SET value = ?2 WHERE key = ?1",
             params![key.to_string(), v],
         )?;
+        tx.commit()?;
         Ok(())
     }
 
@@ -145,7 +148,7 @@ mod tests {
 
     #[test]
     fn test_get_set_extension_whitelist() {
-        let _env = TestEnv::new_with_cleanup(false);
+        let _env = TestEnv::new();
         let extension_whitelist = vec![
             ExtensionConfigTree {
                 label: "文档".into(),
@@ -187,7 +190,7 @@ mod tests {
 
     #[test]
     fn test_set_extension_enabled() {
-        let _env = TestEnv::new_with_cleanup(false);
+        let _env = TestEnv::new();
         let extension_whitelist = vec![ExtensionConfigTree {
             label: "文档".into(),
             is_extension: false,

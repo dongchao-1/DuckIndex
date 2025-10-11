@@ -1,76 +1,74 @@
-use std::sync::{Arc, Mutex, RwLock, RwLockWriteGuard};
-use std::collections::HashMap;
+use std::{sync::{Mutex, MutexGuard}, thread, time::Duration};
 
-use anyhow::{anyhow, Context, Result};
-use log::{debug, error, info};
+use anyhow::{anyhow, Result};
+use log::{debug, info};
 use once_cell::sync::OnceCell;
 use r2d2::{Pool, PooledConnection};
-use duckdb::{DuckdbConnectionManager, Params, Row, Transaction};
-use serde::de;
+use duckdb::DuckdbConnectionManager;
 
 use crate::dirs::get_index_dir;
 
-/// 持有写锁和数据库连接的包装结构体
-#[derive(Debug)]
-pub struct WriteConnection {
-    _table_locks: Vec<RwLockWriteGuard<'static, String>>, // Keep the locks alive
-    conn: PooledConnection<DuckdbConnectionManager>,
+use std::ops::{Deref, DerefMut};
+
+// 自定义的 Guard，用于在 Drop 时打印日志
+pub struct DebuggingMutexGuard<'a, T> {
+    guard: MutexGuard<'a, T>,
+    name: &'static str,
+    release_sleep: Duration,
 }
 
-impl WriteConnection {
-    pub fn query_row<T, P, F>(&self, sql: &str, params: P, f: F) -> duckdb::Result<T>
-    where
-        P: Params,
-        F: FnOnce(&Row<'_>) -> duckdb::Result<T>,
-    {
-        match self.conn.prepare(sql)?.query_row(params, f) {
-            Ok(result) => Ok(result),
-            Err(e) => {
-                if let duckdb::Error::DuckDBFailure(_, desc) = &e {
-                    if let Some(d) = desc {
-                        if d.contains("write-write conflict on key") {
-                            error!("write-write conflict: {}", e);
-                            // TODO 重试
-                        }
-                    }
-                    Err(e)
-                } else {
-                    Err(e)
-                }
-            }
+impl<T> Drop for DebuggingMutexGuard<'_, T> {
+    fn drop(&mut self) {
+        // thread::sleep(self.release_sleep);
+        debug!("释放了 Mutex {} 的锁", self.name);
+    }
+}
+
+// 实现 Deref 和 DerefMut 以便能像普通 Guard 一样操作数据
+impl<T> Deref for DebuggingMutexGuard<'_, T> {
+    type Target = T;
+    fn deref(&self) -> &Self::Target {
+        &self.guard
+    }
+}
+
+impl<T> DerefMut for DebuggingMutexGuard<'_, T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.guard
+    }
+}
+
+// 自定义的 Mutex
+pub struct DebuggingMutex<T> {
+    mutex: Mutex<T>,
+    name: &'static str,
+    release_sleep: Duration,
+}
+
+impl<T> DebuggingMutex<T> {
+    pub fn new(data: T, name: &'static str, release_sleep: Duration) -> Self {
+        Self {
+            mutex: Mutex::new(data),
+            name,
+            release_sleep,
         }
     }
 
-    pub fn execute<P: Params>(&self, sql: &str, params: P) -> duckdb::Result<usize> {
-        self.conn.execute(sql, params)
-    }
-
-    pub fn execute_batch(&self, sql: &str) -> duckdb::Result<()> {
-        self.conn.execute_batch(sql)
-    }
-
-    pub fn transaction(&mut self) -> duckdb::Result<Transaction<'_>> {
-        self.conn.transaction()
+    pub fn lock(&self) -> DebuggingMutexGuard<'_, T> {
+        debug!("正在尝试获取 Mutex {} 的锁...", self.name);
+        let guard = self.mutex.lock().unwrap();
+        debug!("成功获取了 Mutex {} 的锁", self.name);
+        DebuggingMutexGuard {
+            guard,
+            name: self.name,
+            release_sleep: self.release_sleep,
+        }
     }
 }
 
-// impl std::ops::Deref for WriteConnection {
-//     type Target = PooledConnection<DuckdbConnectionManager>;
-    
-//     fn deref(&self) -> &Self::Target {
-//         &self.conn
-//     }
-// }
-
-// impl std::ops::DerefMut for WriteConnection {
-//     fn deref_mut(&mut self) -> &mut Self::Target {
-//         &mut self.conn
-//     }
-// }
-
 // 全局静态变量
-static POOL: OnceCell<Arc<Mutex<Option<Pool<DuckdbConnectionManager>>>>> = OnceCell::new();
-static TABLE_LOCKS: OnceCell<Arc<Mutex<HashMap<String, Arc<RwLock<String>>>>>> = OnceCell::new();
+static POOL: OnceCell<DebuggingMutex<Option<Pool<DuckdbConnectionManager>>>> = OnceCell::new();
+static WRITE_CONN: OnceCell<DebuggingMutex<Option<PooledConnection<DuckdbConnectionManager>>>> = OnceCell::new();
 
 pub fn init_pool() {
     POOL.get_or_init(|| {
@@ -78,15 +76,20 @@ pub fn init_pool() {
         let index_path = get_index_dir().join("index.db");
 
         let manager = DuckdbConnectionManager::file(index_path).expect("Failed to create DuckDB manager");
-        Arc::new(Mutex::new(Some(
+        DebuggingMutex::new(Some(
             Pool::new(manager).expect("Failed to create pool"),
-            // Pool::builder().error_handler(Box::new(RetryErrorHandler::new())).max_size(15).build(manager).expect("Failed to create pool"),
-        )))
+        ), "DB_POOL", Duration::ZERO)
     });
     
-    // 初始化表锁映射
-    TABLE_LOCKS.get_or_init(|| {
-        Arc::new(Mutex::new(HashMap::new()))
+    WRITE_CONN.get_or_init(|| {
+        let conn = POOL
+            .get()
+            .expect("Pool not initialized")
+            .lock();
+
+        let pool_ref = conn.as_ref().expect("Database pool is not initialized");
+        let pooled_conn = pool_ref.get().expect("Failed to get connection from pool");
+        DebuggingMutex::new(Some(pooled_conn), "DB_WRITE_CONN", Duration::from_millis(100))
     });
 }
 
@@ -96,101 +99,46 @@ pub fn get_read_conn() -> Result<PooledConnection<DuckdbConnectionManager>> {
         .get()
         .expect("Pool not initialized")
         .lock()
-        .map_err(|e| {
-            error!("获取数据库连接失败: {e:?}");
-            anyhow::anyhow!("获取数据库连接失败")
-        })?
         .as_ref()
-        .context("获取数据库连接as_ref失败")?
+        .ok_or_else(|| anyhow!("Database pool is not initialized"))?
         .get()?;
     
     Ok(conn)
 }
 
-/// 获取多表写连接，按字母顺序锁定多个表以避免死锁，返回单个连接
-pub fn get_multi_write_conn(table_names: &[&str]) -> Result<WriteConnection> {
-    if table_names.is_empty() {
-        return Err(anyhow!("至少需要指定一个表名"));
-    }
-    debug!("请求多表写连接，表名: {:?}", table_names);
-
-    // 按字母顺序排序表名以避免死锁
-    let mut sorted_names: Vec<&str> = table_names.to_vec();
-    sorted_names.sort();
-    sorted_names.dedup(); // 去重
-    
-    // 首先收集所有的 Arc<RwLock<()>> 并持有它们
-    let mut table_locks = Vec::new();
-    
-    for table_name in &sorted_names {
-        let table_lock_arc = {
-            let mut table_locks_map = TABLE_LOCKS
-                .get()
-                .expect("Table locks not initialized")
-                .lock()
-                .map_err(|e| {
-                    error!("获取表锁映射失败: {e:?}");
-                    anyhow::anyhow!("获取表锁映射失败")
-                })?;
-            
-            // 如果表锁不存在，则创建新的锁
-            table_locks_map.entry(table_name.to_string())
-                .or_insert_with(|| Arc::new(RwLock::new(table_name.to_string())))
-                .clone()
-        };
-        
-        let write_guard = table_lock_arc
-            .write()
-            .map_err(|e| {
-                error!("获取表 {} 的写锁失败: {e:?}", table_name);
-                anyhow::anyhow!("获取表 {} 的写锁失败", table_name)
-            })?;
-        
-        // Use unsafe to transmute the lifetime to 'static
-        // This is safe because we know the Arc<RwLock<()>> lives for the entire program duration
-        let static_guard: RwLockWriteGuard<'static, String> = unsafe {
-            std::mem::transmute(write_guard)
-        };
-        
-        table_locks.push(static_guard);
-    }
-
-    let ret = WriteConnection {
-        _table_locks: table_locks,
-        conn: get_read_conn()?,
-    };
-
-    debug!("获取写连接: {:?}", ret);
-
-    Ok(ret)
+pub fn get_write_conn() -> Result<DebuggingMutexGuard<'static, Option<PooledConnection<DuckdbConnectionManager>>>> {
+    debug!("尝试获取写锁...");
+    let conn_lock = WRITE_CONN.get().expect("Write connection not initialized");
+    let conn = conn_lock.lock();
+    debug!("获取写锁成功");
+    Ok(conn)
 }
-
-/// 获取单表写连接的便捷方法
-pub fn get_write_conn(table_name: &str) -> Result<WriteConnection> {
-    get_multi_write_conn(&[table_name])
-}
-    
 
 pub fn close_pool() {
     info!("关闭连接池...");
-    let conn = get_read_conn().expect("Failed to get connection");
-    conn.execute_batch("CHECKPOINT;")
-        .expect("Failed to execute batch");
-
+    let mut conn_lock = get_write_conn().expect("Failed to get connection");
+    let conn = conn_lock.take();
+    if let Some(pooled_conn) = conn {
+        pooled_conn.execute_batch("FORCE CHECKPOINT;")
+            .expect("Failed to execute batch");
+        info!("写连接已关闭。");
+    }
+    
     if let Some(pool_arc) = POOL.get() {
-        if let Ok(mut pool_option_lock) = pool_arc.lock() {
-            let pool_option = pool_option_lock.take();
-            if pool_option.is_some() {
-                info!("数据库连接池已关闭。");
-            }
+        let mut pool_option_lock = pool_arc.lock();
+        let pool_option = pool_option_lock.take();
+        if pool_option.is_some() {
+            info!("数据库连接池已关闭。");
         }
     }
 }
 
 pub fn check_or_init_db() -> Result<()> {
     if check_db_init().is_err() {
-        let conn = get_write_conn("db_version")?;
-        conn.execute_batch(
+        let mut conn = get_write_conn()?;
+        let conn = conn.as_mut().ok_or_else(|| anyhow!("Database write connection is not initialized"))?;
+        let tx = conn.transaction()?;
+        tx.execute_batch(
             r#"
             -- config.rs
             DROP SEQUENCE IF EXISTS config_id;
@@ -265,6 +213,8 @@ pub fn check_or_init_db() -> Result<()> {
             INSERT INTO db_version (version) VALUES ('0.1');
             "#,
         )?;
+        tx.commit()?;
+        info!("数据库初始化完成");
     }
     Ok(())
 }
