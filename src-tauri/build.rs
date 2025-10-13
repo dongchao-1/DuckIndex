@@ -1,6 +1,16 @@
+use find_msvc_tools::find;
 use std::env;
 use std::fs;
 use std::path::Path;
+
+fn find_dll(dll: &str) -> String {
+    find("x64", dll)
+        .expect("Failed to find msvcp140.dll")
+        .get_program()
+        .to_str()
+        .expect("Failed to convert path to string")
+        .to_string()
+}
 
 fn main() {
     // 获取当前工作目录，构建相对路径
@@ -12,8 +22,6 @@ fn main() {
             vcpkg_base.display()
         );
     }
-
-    let vcpkg_bin = vcpkg_base.join("installed").join("x64-windows").join("bin");
     let out_dir = env::var("OUT_DIR").expect("OUT_DIR not set");
     let target_dir = Path::new(&out_dir)
         .parent()
@@ -24,7 +32,18 @@ fn main() {
         .unwrap();
     println!("cargo:info=Target directory: {}", target_dir.display());
 
-    // 读取目录下所有 .dll 文件
+    // CRT依赖
+    let crt_dlls = ["msvcp140.dll", "vcruntime140.dll", "vcruntime140_1.dll"];
+    for dll in crt_dlls {
+        let dll_path = find_dll(dll);
+        println!("cargo:info=Found {dll}, {dll_path}");
+        let dest_path = target_dir.join(dll);
+        fs::copy(&dll_path, &dest_path)
+            .unwrap_or_else(|_| panic!("Failed to copy {} to {}", dll_path, dest_path.display()));
+    }
+
+    // vcpkg依赖
+    let vcpkg_bin = vcpkg_base.join("installed").join("x64-windows").join("bin");
     if vcpkg_bin.is_dir() {
         match fs::read_dir(&vcpkg_bin) {
             Ok(entries) => {

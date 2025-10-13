@@ -1,0 +1,20 @@
+{
+  "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg-tool/main/docs/vcpkg.schema.json",
+  "name": "duckindex",
+  "version-string": "1.0.0",
+  "dependencies": [
+    "tesseract",
+    "duckdb"
+  ],
+  "builtin-baseline": "50c0cb48a0cf2f6fc5c7b2c0d2bafbe26d0a7ca2",
+  "overrides": [
+    {
+      "name": "tesseract",
+      "version": "5.5.0"
+    },
+    {
+      "name": "duckdb",
+      "version": "1.4.0"
+    }
+  ]
+}
