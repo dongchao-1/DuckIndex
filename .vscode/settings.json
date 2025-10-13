@@ -1,4 +1,4 @@
 {
-    "rust-analyzer.check.command": "clippy",
-    "rust-analyzer.check.extraArgs": ["--all-features"],
+    "rust-analyzer.cargo.buildScripts.overrideCommand": ["just", "ra-build"],
+    "rust-analyzer.check.overrideCommand": ["just", "ra-check"],
 }
