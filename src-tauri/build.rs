@@ -15,13 +15,7 @@ fn find_dll(dll: &str) -> String {
 fn main() {
     // 获取当前工作目录，构建相对路径
     let current_dir = env::current_dir().expect("无法获取当前目录");
-    let vcpkg_base = current_dir.parent().expect("无法获取父目录").join("vcpkg");
-    if !vcpkg_base.is_dir() {
-        panic!(
-            "vcpkg_base is not a valid directory: {}",
-            vcpkg_base.display()
-        );
-    }
+
     let out_dir = env::var("OUT_DIR").expect("OUT_DIR not set");
     let target_dir = Path::new(&out_dir)
         .parent()
@@ -43,7 +37,17 @@ fn main() {
     }
 
     // vcpkg依赖
-    let vcpkg_bin = vcpkg_base.join("installed").join("x64-windows").join("bin");
+    let vcpkg_base = current_dir
+        .parent()
+        .expect("无法获取父目录")
+        .join("vcpkg_installed");
+    if !vcpkg_base.is_dir() {
+        panic!(
+            "vcpkg_base is not a valid directory: {}",
+            vcpkg_base.display()
+        );
+    }
+    let vcpkg_bin = vcpkg_base.join("x64-windows").join("bin");
     if vcpkg_bin.is_dir() {
         match fs::read_dir(&vcpkg_bin) {
             Ok(entries) => {
