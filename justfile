@@ -1,9 +1,7 @@
-# CARGO_MAKE_WORKING_DIRECTORY 在 justfile 中通常直接用 '.' 代表当前目录
-# 但为了保持与 VCPKG 路径的兼容性，我们显式定义它
 set shell := ["powershell.exe", "-NoProfile", "-Command"]
-VCPKG := "C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\VC\\vcpkg\\vcpkg.exe"
+VCPKG := env('ProgramFiles')+"\\Microsoft Visual Studio\\2022\\Enterprise\\VC\\vcpkg\\vcpkg.exe"
 
-export LIBCLANG_PATH := "C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\VC\\Tools\\Llvm\\x64\\bin"
+export LIBCLANG_PATH := env('ProgramFiles')+"\\Microsoft Visual Studio\\2022\\Enterprise\\VC\\Tools\\Llvm\\x64\\bin"
 export LEPTONICA_INCLUDE_PATH := `$PWD.Path`+"\\vcpkg_installed\\x64-windows\\include"
 export LEPTONICA_LINK_PATHS := `$PWD.Path`+"\\vcpkg_installed\\x64-windows\\lib"
 export LEPTONICA_LINK_LIBS := "leptonica-1.85.0"
@@ -13,14 +11,15 @@ export TESSERACT_LINK_LIBS := "tesseract55"
 export DUCKDB_INCLUDE_DIR := `$PWD.Path`+"\\vcpkg_installed\\x64-windows\\include"
 export DUCKDB_LIB_DIR := `$PWD.Path`+"\\vcpkg_installed\\x64-windows\\lib"
 
-echo-env:
+echo-vars:
+    @echo "VCPKG={{VCPKG}}"
+    @echo "LIBCLANG_PATH={{LIBCLANG_PATH}}"
     @echo "LEPTONICA_INCLUDE_PATH={{LEPTONICA_INCLUDE_PATH}}"
     @echo "LEPTONICA_LINK_PATHS={{LEPTONICA_LINK_PATHS}}"
     @echo "LEPTONICA_LINK_LIBS={{LEPTONICA_LINK_LIBS}}"
     @echo "TESSERACT_INCLUDE_PATHS={{TESSERACT_INCLUDE_PATHS}}"
     @echo "TESSERACT_LINK_PATHS={{TESSERACT_LINK_PATHS}}"
     @echo "TESSERACT_LINK_LIBS={{TESSERACT_LINK_LIBS}}"
-    @echo "LIBCLANG_PATH={{LIBCLANG_PATH}}"
     @echo "DUCKDB_INCLUDE_DIR={{DUCKDB_INCLUDE_DIR}}"
     @echo "DUCKDB_LIB_DIR={{DUCKDB_LIB_DIR}}"
 
