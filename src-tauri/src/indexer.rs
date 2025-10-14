@@ -412,308 +412,310 @@ impl Indexer {
 mod tests {
     use super::*;
     use crate::test::test_mod::TestEnv;
+    use rusty_fork::rusty_fork_test;
 
     const TEST_DATA_DIR: &str = "../test_data/indexer";
 
-    #[test]
-    fn test_get_index() {
-        let _env = TestEnv::new();
-        let _ = Indexer::new().unwrap();
-    }
+    rusty_fork_test! {
+        #[test]
+        fn test_get_index() {
+            let _env = TestEnv::new();
+            let _ = Indexer::new().unwrap();
+        }
 
-    #[test]
-    fn test_write_directory() {
-        let _env = TestEnv::new();
-        let indexer = Indexer::new().unwrap();
-        let path = Path::new(TEST_DATA_DIR).canonicalize().unwrap();
-        indexer.write_directory(&path).unwrap();
-    }
+        #[test]
+        fn test_write_directory() {
+            let _env = TestEnv::new();
+            let indexer = Indexer::new().unwrap();
+            let path = Path::new(TEST_DATA_DIR).canonicalize().unwrap();
+            indexer.write_directory(&path).unwrap();
+        }
 
-    #[test]
-    fn test_get_directory() {
-        let _env = TestEnv::new();
-        let indexer = Indexer::new().unwrap();
-        let path = Path::new(TEST_DATA_DIR).canonicalize().unwrap();
-        indexer.write_directory(&path).unwrap();
+        #[test]
+        fn test_get_directory() {
+            let _env = TestEnv::new();
+            let indexer = Indexer::new().unwrap();
+            let path = Path::new(TEST_DATA_DIR).canonicalize().unwrap();
+            indexer.write_directory(&path).unwrap();
 
-        let dir = indexer.get_directory(&path).unwrap();
-        assert_eq!(dir.name, "indexer");
-        assert_eq!(dir.path, path.canonicalize().unwrap().to_str().unwrap());
-    }
+            let dir = indexer.get_directory(&path).unwrap();
+            assert_eq!(dir.name, "indexer");
+            assert_eq!(dir.path, path.canonicalize().unwrap().to_str().unwrap());
+        }
 
-    #[test]
-    fn test_write_file_items() {
-        let _env = TestEnv::new();
-        let indexer = Indexer::new().unwrap();
+        #[test]
+        fn test_write_file_items() {
+            let _env = TestEnv::new();
+            let indexer = Indexer::new().unwrap();
 
-        let file = Path::new(TEST_DATA_DIR)
-            .join("1.txt")
-            .canonicalize()
-            .unwrap();
-        indexer.write_directory(file.parent().unwrap()).unwrap();
+            let file = Path::new(TEST_DATA_DIR)
+                .join("1.txt")
+                .canonicalize()
+                .unwrap();
+            indexer.write_directory(file.parent().unwrap()).unwrap();
 
-        let items = vec![
-            Item {
-                content: "Hello, world!".into(),
-            },
-            Item {
-                content: "This is a test.".into(),
-            },
-        ];
-        indexer.write_file_items(&file, items).unwrap();
-    }
+            let items = vec![
+                Item {
+                    content: "Hello, world!".into(),
+                },
+                Item {
+                    content: "This is a test.".into(),
+                },
+            ];
+            indexer.write_file_items(&file, items).unwrap();
+        }
 
-    #[test]
-    fn test_get_file() {
-        let _env = TestEnv::new();
-        let indexer = Indexer::new().unwrap();
+        #[test]
+        fn test_get_file() {
+            let _env = TestEnv::new();
+            let indexer = Indexer::new().unwrap();
 
-        let file = Path::new(TEST_DATA_DIR)
-            .join("1.txt")
-            .canonicalize()
-            .unwrap();
-        indexer.write_directory(file.parent().unwrap()).unwrap();
+            let file = Path::new(TEST_DATA_DIR)
+                .join("1.txt")
+                .canonicalize()
+                .unwrap();
+            indexer.write_directory(file.parent().unwrap()).unwrap();
 
-        let items = vec![
-            Item {
-                content: "Hello, world!".into(),
-            },
-            Item {
-                content: "This is a test.".into(),
-            },
-        ];
-        indexer.write_file_items(&file, items).unwrap();
+            let items = vec![
+                Item {
+                    content: "Hello, world!".into(),
+                },
+                Item {
+                    content: "This is a test.".into(),
+                },
+            ];
+            indexer.write_file_items(&file, items).unwrap();
 
-        let file_result = indexer.get_file(&file).unwrap();
-        assert_eq!(file_result.name, "1.txt");
-        assert_eq!(file_result.path, file.parent().unwrap().to_str().unwrap());
-    }
+            let file_result = indexer.get_file(&file).unwrap();
+            assert_eq!(file_result.name, "1.txt");
+            assert_eq!(file_result.path, file.parent().unwrap().to_str().unwrap());
+        }
 
-    #[test]
-    fn test_get_sub_directories_and_files() {
-        let _env = TestEnv::new();
-        let indexer = Indexer::new().unwrap();
+        #[test]
+        fn test_get_sub_directories_and_files() {
+            let _env = TestEnv::new();
+            let indexer = Indexer::new().unwrap();
 
-        let file = Path::new(TEST_DATA_DIR)
-            .join("1.txt")
-            .canonicalize()
-            .unwrap();
-        indexer.write_directory(file.parent().unwrap()).unwrap();
+            let file = Path::new(TEST_DATA_DIR)
+                .join("1.txt")
+                .canonicalize()
+                .unwrap();
+            indexer.write_directory(file.parent().unwrap()).unwrap();
 
-        let items = vec![
-            Item {
-                content: "Hello, world!".into(),
-            },
-            Item {
-                content: "This is a test.".into(),
-            },
-        ];
-        indexer.write_file_items(&file, items).unwrap();
+            let items = vec![
+                Item {
+                    content: "Hello, world!".into(),
+                },
+                Item {
+                    content: "This is a test.".into(),
+                },
+            ];
+            indexer.write_file_items(&file, items).unwrap();
 
-        let sub_dir_path = Path::new(TEST_DATA_DIR)
-            .join("office")
-            .canonicalize()
-            .unwrap();
-        indexer.write_directory(&sub_dir_path).unwrap();
+            let sub_dir_path = Path::new(TEST_DATA_DIR)
+                .join("office")
+                .canonicalize()
+                .unwrap();
+            indexer.write_directory(&sub_dir_path).unwrap();
 
-        let (dir_result, file_result) = indexer
-            .get_sub_directories_and_files(file.parent().unwrap())
-            .unwrap();
-        assert_eq!(dir_result.len(), 1);
-        assert_eq!(file_result.len(), 1);
-    }
+            let (dir_result, file_result) = indexer
+                .get_sub_directories_and_files(file.parent().unwrap())
+                .unwrap();
+            assert_eq!(dir_result.len(), 1);
+            assert_eq!(file_result.len(), 1);
+        }
 
-    #[test]
-    fn test_search_directory() {
-        let _env = TestEnv::new();
-        let indexer = Indexer::new().unwrap();
-        let dir = Path::new(TEST_DATA_DIR).canonicalize().unwrap();
-        indexer.write_directory(&dir).unwrap();
+        #[test]
+        fn test_search_directory() {
+            let _env = TestEnv::new();
+            let indexer = Indexer::new().unwrap();
+            let dir = Path::new(TEST_DATA_DIR).canonicalize().unwrap();
+            indexer.write_directory(&dir).unwrap();
 
-        let result = indexer.search_directory("indexer", 0, 10).unwrap();
-        assert_eq!(result.len(), 1);
-        assert_eq!(result[0].name, "indexer");
+            let result = indexer.search_directory("indexer", 0, 10).unwrap();
+            assert_eq!(result.len(), 1);
+            assert_eq!(result[0].name, "indexer");
 
-        let result = indexer.search_directory("indexer", 1, 10).unwrap();
-        assert_eq!(result.len(), 0);
-    }
+            let result = indexer.search_directory("indexer", 1, 10).unwrap();
+            assert_eq!(result.len(), 0);
+        }
 
-    #[test]
-    fn test_search_file() {
-        let _env = TestEnv::new();
-        let indexer = Indexer::new().unwrap();
-        let items = vec![
-            Item {
-                content: "Hello, world!".into(),
-            },
-            Item {
-                content: "This is a test.".into(),
-            },
-        ];
-        let file = Path::new(TEST_DATA_DIR)
-            .join("1.txt")
-            .canonicalize()
-            .unwrap();
-        indexer.write_directory(file.parent().unwrap()).unwrap();
-        indexer.write_file_items(&file, items).unwrap();
+        #[test]
+        fn test_search_file() {
+            let _env = TestEnv::new();
+            let indexer = Indexer::new().unwrap();
+            let items = vec![
+                Item {
+                    content: "Hello, world!".into(),
+                },
+                Item {
+                    content: "This is a test.".into(),
+                },
+            ];
+            let file = Path::new(TEST_DATA_DIR)
+                .join("1.txt")
+                .canonicalize()
+                .unwrap();
+            indexer.write_directory(file.parent().unwrap()).unwrap();
+            indexer.write_file_items(&file, items).unwrap();
 
-        let result = indexer.search_file("1.t", 0, 10).unwrap();
-        assert_eq!(result.len(), 1);
-        assert_eq!(result[0].name, "1.txt");
-        assert_eq!(result[0].path, file.parent().unwrap().to_str().unwrap());
+            let result = indexer.search_file("1.t", 0, 10).unwrap();
+            assert_eq!(result.len(), 1);
+            assert_eq!(result[0].name, "1.txt");
+            assert_eq!(result[0].path, file.parent().unwrap().to_str().unwrap());
 
-        let result = indexer.search_file("1.t", 1, 10).unwrap();
-        assert_eq!(result.len(), 0);
-    }
+            let result = indexer.search_file("1.t", 1, 10).unwrap();
+            assert_eq!(result.len(), 0);
+        }
 
-    #[test]
-    fn test_search_item() {
-        let _env = TestEnv::new();
-        let indexer = Indexer::new().unwrap();
-        let items = vec![
-            Item {
-                content: "Hello, world!".into(),
-            },
-            Item {
-                content: "This is a test.".into(),
-            },
-        ];
-        let file = Path::new(TEST_DATA_DIR)
-            .join("1.txt")
-            .canonicalize()
-            .unwrap();
-        indexer.write_directory(file.parent().unwrap()).unwrap();
-        indexer.write_file_items(&file, items).unwrap();
+        #[test]
+        fn test_search_item() {
+            let _env = TestEnv::new();
+            let indexer = Indexer::new().unwrap();
+            let items = vec![
+                Item {
+                    content: "Hello, world!".into(),
+                },
+                Item {
+                    content: "This is a test.".into(),
+                },
+            ];
+            let file = Path::new(TEST_DATA_DIR)
+                .join("1.txt")
+                .canonicalize()
+                .unwrap();
+            indexer.write_directory(file.parent().unwrap()).unwrap();
+            indexer.write_file_items(&file, items).unwrap();
 
-        let result = indexer.search_item("world", 0, 10).unwrap();
-        assert_eq!(result.len(), 1);
-        assert_eq!(result[0].content, "Hello, world!");
-        assert_eq!(result[0].file, "1.txt");
-        assert_eq!(result[0].path, file.parent().unwrap().to_str().unwrap());
-    }
+            let result = indexer.search_item("world", 0, 10).unwrap();
+            assert_eq!(result.len(), 1);
+            assert_eq!(result[0].content, "Hello, world!");
+            assert_eq!(result[0].file, "1.txt");
+            assert_eq!(result[0].path, file.parent().unwrap().to_str().unwrap());
+        }
 
-    #[test]
-    fn test_delete_file() {
-        let _env = TestEnv::new();
-        let indexer = Indexer::new().unwrap();
-        let items = vec![
-            Item {
-                content: "Hello, world!".into(),
-            },
-            Item {
-                content: "This is a test.".into(),
-            },
-        ];
-        let file = Path::new(TEST_DATA_DIR)
-            .join("1.txt")
-            .canonicalize()
-            .unwrap();
-        indexer.write_directory(file.parent().unwrap()).unwrap();
-        indexer.write_file_items(&file, items).unwrap();
+        #[test]
+        fn test_delete_file() {
+            let _env = TestEnv::new();
+            let indexer = Indexer::new().unwrap();
+            let items = vec![
+                Item {
+                    content: "Hello, world!".into(),
+                },
+                Item {
+                    content: "This is a test.".into(),
+                },
+            ];
+            let file = Path::new(TEST_DATA_DIR)
+                .join("1.txt")
+                .canonicalize()
+                .unwrap();
+            indexer.write_directory(file.parent().unwrap()).unwrap();
+            indexer.write_file_items(&file, items).unwrap();
 
-        indexer.delete_file(&file).unwrap();
+            indexer.delete_file(&file).unwrap();
 
-        let (dir_result, file_result) = indexer
-            .get_sub_directories_and_files(file.parent().unwrap())
-            .unwrap();
-        assert_eq!(dir_result.len(), 0);
-        assert_eq!(file_result.len(), 0);
-    }
+            let (dir_result, file_result) = indexer
+                .get_sub_directories_and_files(file.parent().unwrap())
+                .unwrap();
+            assert_eq!(dir_result.len(), 0);
+            assert_eq!(file_result.len(), 0);
+        }
 
-    #[test]
-    fn test_delete_file_not_exists() {
-        let _env = TestEnv::new();
-        let indexer = Indexer::new().unwrap();
-        let items = vec![
-            Item {
-                content: "Hello, world!".into(),
-            },
-            Item {
-                content: "This is a test.".into(),
-            },
-        ];
-        let file = Path::new(TEST_DATA_DIR)
-            .join("1.txt")
-            .canonicalize()
-            .unwrap();
-        indexer.write_directory(file.parent().unwrap()).unwrap();
-        indexer.write_file_items(&file, items).unwrap();
+        #[test]
+        fn test_delete_file_not_exists() {
+            let _env = TestEnv::new();
+            let indexer = Indexer::new().unwrap();
+            let items = vec![
+                Item {
+                    content: "Hello, world!".into(),
+                },
+                Item {
+                    content: "This is a test.".into(),
+                },
+            ];
+            let file = Path::new(TEST_DATA_DIR)
+                .join("1.txt")
+                .canonicalize()
+                .unwrap();
+            indexer.write_directory(file.parent().unwrap()).unwrap();
+            indexer.write_file_items(&file, items).unwrap();
 
-        indexer
-            .delete_file(&file.parent().unwrap().join("non_existent.txt"))
-            .unwrap();
-    }
+            indexer
+                .delete_file(&file.parent().unwrap().join("non_existent.txt"))
+                .unwrap();
+        }
 
-    #[test]
-    fn test_delete_directory() {
-        let _env = TestEnv::new();
-        let indexer = Indexer::new().unwrap();
-        let items = vec![
-            Item {
-                content: "Hello, world!".into(),
-            },
-            Item {
-                content: "This is a test.".into(),
-            },
-        ];
-        let file = Path::new(TEST_DATA_DIR)
-            .join("1.txt")
-            .canonicalize()
-            .unwrap();
-        indexer.write_directory(file.parent().unwrap()).unwrap();
-        indexer.write_file_items(&file, items).unwrap();
-        indexer
-            .write_directory(
-                &Path::new(TEST_DATA_DIR)
-                    .join("office")
-                    .canonicalize()
-                    .unwrap(),
-            )
-            .unwrap();
+        #[test]
+        fn test_delete_directory() {
+            let _env = TestEnv::new();
+            let indexer = Indexer::new().unwrap();
+            let items = vec![
+                Item {
+                    content: "Hello, world!".into(),
+                },
+                Item {
+                    content: "This is a test.".into(),
+                },
+            ];
+            let file = Path::new(TEST_DATA_DIR)
+                .join("1.txt")
+                .canonicalize()
+                .unwrap();
+            indexer.write_directory(file.parent().unwrap()).unwrap();
+            indexer.write_file_items(&file, items).unwrap();
+            indexer
+                .write_directory(
+                    &Path::new(TEST_DATA_DIR)
+                        .join("office")
+                        .canonicalize()
+                        .unwrap(),
+                )
+                .unwrap();
 
-        indexer.delete_directory(file.parent().unwrap()).unwrap();
+            indexer.delete_directory(file.parent().unwrap()).unwrap();
 
-        let (dir_result, file_result) = indexer
-            .get_sub_directories_and_files(file.parent().unwrap())
-            .unwrap();
-        assert_eq!(dir_result.len(), 0);
-        assert_eq!(file_result.len(), 0);
-    }
+            let (dir_result, file_result) = indexer
+                .get_sub_directories_and_files(file.parent().unwrap())
+                .unwrap();
+            assert_eq!(dir_result.len(), 0);
+            assert_eq!(file_result.len(), 0);
+        }
 
-    #[test]
-    fn test_delete_directory_not_exists() {
-        let _env = TestEnv::new();
-        let indexer = Indexer::new().unwrap();
-        let items = vec![
-            Item {
-                content: "Hello, world!".into(),
-            },
-            Item {
-                content: "This is a test.".into(),
-            },
-        ];
-        let file = Path::new(TEST_DATA_DIR)
-            .join("1.txt")
-            .canonicalize()
-            .unwrap();
-        indexer.write_directory(file.parent().unwrap()).unwrap();
-        indexer.write_file_items(&file, items).unwrap();
-        indexer
-            .write_directory(
-                &Path::new(TEST_DATA_DIR)
-                    .join("office")
-                    .canonicalize()
-                    .unwrap(),
-            )
-            .unwrap();
+        #[test]
+        fn test_delete_directory_not_exists() {
+            let _env = TestEnv::new();
+            let indexer = Indexer::new().unwrap();
+            let items = vec![
+                Item {
+                    content: "Hello, world!".into(),
+                },
+                Item {
+                    content: "This is a test.".into(),
+                },
+            ];
+            let file = Path::new(TEST_DATA_DIR)
+                .join("1.txt")
+                .canonicalize()
+                .unwrap();
+            indexer.write_directory(file.parent().unwrap()).unwrap();
+            indexer.write_file_items(&file, items).unwrap();
+            indexer
+                .write_directory(
+                    &Path::new(TEST_DATA_DIR)
+                        .join("office")
+                        .canonicalize()
+                        .unwrap(),
+                )
+                .unwrap();
 
-        indexer
-            .delete_directory(&file.parent().unwrap().join("not_exists_path"))
-            .unwrap();
-    }
+            indexer
+                .delete_directory(&file.parent().unwrap().join("not_exists_path"))
+                .unwrap();
+        }
 
-    #[test]
-    fn test_get_index_status() {
+        #[test]
+        fn test_get_index_status() {
         let _env = TestEnv::new();
         let indexer = Indexer::new().unwrap();
         let items = vec![
@@ -735,5 +737,6 @@ mod tests {
         assert_eq!(result.directories, 1);
         assert_eq!(result.files, 1);
         assert_eq!(result.items, 2);
+        }
     }
 }

@@ -44,34 +44,37 @@ pub mod test_mod {
     #[cfg(test)]
     mod temp_dir_tests {
         use super::*;
+        use rusty_fork::rusty_fork_test;
 
-        #[test]
-        fn test_temp_dir_cleanup() {
-            let temp_path;
-            {
-                let test_env = TestEnv::new();
-                temp_path = test_env.temp_dir.path().to_path_buf();
+        rusty_fork_test! {
+            #[test]
+            fn test_temp_dir_cleanup() {
+                let temp_path;
+                {
+                    let test_env = TestEnv::new();
+                    temp_path = test_env.temp_dir.path().to_path_buf();
 
-                // println!("临时目录路径: {}", temp_path.display());
-                assert!(temp_path.exists(), "临时目录应该存在");
+                    // println!("临时目录路径: {}", temp_path.display());
+                    assert!(temp_path.exists(), "临时目录应该存在");
+                }
+
+                assert!(!temp_path.exists(), "临时目录应该被清理");
             }
 
-            assert!(!temp_path.exists(), "临时目录应该被清理");
-        }
+            #[test]
+            #[ignore]
+            fn test_temp_dir_no_cleanup() {
+                let temp_path;
+                {
+                    let test_env = TestEnv::new_with_cleanup(false);
+                    temp_path = test_env.temp_dir.path().to_path_buf();
 
-        #[test]
-        #[ignore]
-        fn test_temp_dir_no_cleanup() {
-            let temp_path;
-            {
-                let test_env = TestEnv::new_with_cleanup(false);
-                temp_path = test_env.temp_dir.path().to_path_buf();
+                    // println!("临时目录路径: {:?}", temp_path.display());
+                    assert!(temp_path.exists(), "临时目录应该存在");
+                }
 
-                // println!("临时目录路径: {:?}", temp_path.display());
-                assert!(temp_path.exists(), "临时目录应该存在");
+                assert!(temp_path.exists(), "临时目录不应该被清理");
             }
-
-            assert!(temp_path.exists(), "临时目录不应该被清理");
         }
     }
 }

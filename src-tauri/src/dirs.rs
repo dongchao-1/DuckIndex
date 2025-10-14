@@ -37,22 +37,24 @@ pub fn get_log_dir() -> PathBuf {
 
 #[cfg(test)]
 mod tests {
-
     use crate::test::test_mod::TestEnv;
+    use rusty_fork::rusty_fork_test;
 
     use super::*;
 
-    #[test]
-    fn test_get_index_dir() {
-        let _env = TestEnv::new();
-        let index_dir = get_index_dir();
-        assert!(index_dir.exists());
-    }
+    rusty_fork_test! {
+        #[test]
+        fn test_get_index_dir() {
+            let _env = TestEnv::new();
+            let index_dir = get_index_dir();
+            assert!(index_dir.exists());
+        }
 
-    #[test]
-    fn test_get_log_dir() {
-        let _env = TestEnv::new();
-        let log_dir = get_log_dir();
-        assert!(log_dir.exists());
+        #[test]
+        fn test_get_log_dir() {
+            let _env = TestEnv::new();
+            let log_dir = get_log_dir();
+            assert!(log_dir.exists());
+        }
     }
 }

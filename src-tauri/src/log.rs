@@ -73,15 +73,18 @@ pub fn init_logger() {
 mod tests {
     use crate::test::test_mod::TestEnv;
     use log::{debug, error, info, trace, warn};
+    use rusty_fork::rusty_fork_test;
 
-    #[test]
-    fn test_init_logger() {
-        let _env = TestEnv::new();
+    rusty_fork_test! {
+        #[test]
+        fn test_init_logger() {
+            let _env = TestEnv::new();
 
-        error!("error log.");
-        warn!("warn log.");
-        info!("info log.");
-        debug!("debug log.");
-        trace!("trace log.");
+            error!("error log.");
+            warn!("warn log.");
+            info!("info log.");
+            debug!("debug log.");
+            trace!("trace log.");
+        }
     }
 }

@@ -46,9 +46,7 @@ DuckIndex 是一个基于Vue+Rust编写的本地文件内容索引和搜索工�
 - **文档解析**: quick-xml, lopdf
 
 ## 构建系统
-- **任务管理**: cargo-make
 - **依赖管理**: vcpkg (C++ 依赖)
-- **测试框架**: cargo-nextest
 - **CI/CD**: GitHub Actions
 
 ## 💻 开发

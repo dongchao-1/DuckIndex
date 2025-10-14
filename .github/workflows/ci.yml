@@ -13,7 +13,7 @@ jobs:
     steps:
       - uses: taiki-e/install-action@v2
         with:
-          tool: just,cargo-nextest
+          tool: just
 
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -49,6 +49,6 @@ jobs:
         run: |
           just check
 
-      - name: Run release
-        run: |
-          just release
+      # - name: Run release
+      #   run: |
+      #     just release

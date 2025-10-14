@@ -30,9 +30,6 @@ echo-env:
 install-vcpkg-pkgs:
     & "{{VCPKG}}" install
 
-install-cargo-pkgs:
-    cargo install cargo-nextest
-
 install-npm-pkgs:
     npm install
 
@@ -44,10 +41,10 @@ build:
     cargo build --manifest-path ./src-tauri/Cargo.toml
 
 test:
-    cargo nextest run --manifest-path ./src-tauri/Cargo.toml
+    cargo test --manifest-path ./src-tauri/Cargo.toml
 
 test-debug:
-    $env:RUST_BACKTRACE="full"; $env:DUCKINDEX_LOG_LEVEL="debug"; cargo nextest run --manifest-path ./src-tauri/Cargo.toml
+    $env:RUST_BACKTRACE="full"; $env:DUCKINDEX_LOG_LEVEL="debug"; cargo test --manifest-path ./src-tauri/Cargo.toml
 
 clippy:
     cargo clippy --manifest-path ./src-tauri/Cargo.toml --all-targets --all-features -- -D warnings
@@ -57,6 +54,9 @@ ra-build:
 
 ra-check:
     cargo clippy --workspace --message-format=json-diagnostic-rendered-ansi --manifest-path ./src-tauri/Cargo.toml --keep-going --all-targets --all-features
+
+ra-runnables *FLAGS:
+    cd src-tauri; cargo {{FLAGS}}
 
 format:
     cargo fmt --manifest-path ./src-tauri/Cargo.toml
@@ -95,7 +95,7 @@ clean-npm-pkgs:
 # ==================================
 
 # 任务组：安装所有依赖
-install: install-vcpkg-pkgs install-cargo-pkgs install-npm-pkgs
+install: install-vcpkg-pkgs install-npm-pkgs
 
 # 任务组：执行检查
 check: test clippy format-check

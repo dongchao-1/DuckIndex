@@ -71,6 +71,7 @@ pub fn init_pool() {
     POOL.get_or_init(|| {
         info!("初始化连接池...");
         let index_path = get_index_dir().join("index.db");
+        info!("数据库路径: {:?}", index_path);
 
         let manager =
             DuckdbConnectionManager::file(index_path).expect("Failed to create DuckDB manager");
@@ -229,10 +230,13 @@ fn check_db_init() -> Result<()> {
 #[cfg(test)]
 mod tests {
     use crate::test::test_mod::TestEnv;
+    use rusty_fork::rusty_fork_test;
 
-    #[test]
-    fn test_init_logger() {
-        let _env = TestEnv::new();
-        crate::duckdb::init_pool();
+    rusty_fork_test! {
+        #[test]
+        fn test_init_logger() {
+            let _env = TestEnv::new();
+            crate::duckdb::init_pool();
+        }
     }
 }
