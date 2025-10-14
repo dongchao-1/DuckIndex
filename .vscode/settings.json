@@ -1,5 +1,5 @@
 {
-    "rust-analyzer.cargo.buildScripts.overrideCommand": ["just", "ra-build"],
+    "rust-analyzer.cargo.buildScripts.overrideCommand": ["just", "ra-check"],
     "rust-analyzer.check.overrideCommand": ["just", "ra-check"],
     "rust-analyzer.runnables.command": "just ra-runnables",
 }

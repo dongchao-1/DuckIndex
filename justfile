@@ -48,11 +48,8 @@ test-debug:
 clippy:
     cargo clippy --manifest-path ./src-tauri/Cargo.toml --all-targets --all-features -- -D warnings
 
-ra-build:
-    cargo clippy --quiet --workspace --message-format=json-diagnostic-rendered-ansi --manifest-path ./src-tauri/Cargo.toml --keep-going --all-targets --all-features
-
 ra-check:
-    cargo clippy --workspace --message-format=json-diagnostic-rendered-ansi --manifest-path ./src-tauri/Cargo.toml --keep-going --all-targets --all-features
+    cargo clippy --quiet --workspace --message-format=json-diagnostic-rendered-ansi --manifest-path ./src-tauri/Cargo.toml --keep-going --all-targets --all-features
 
 ra-runnables *FLAGS:
     cd src-tauri; cargo {{FLAGS}}
