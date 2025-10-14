@@ -11,7 +11,9 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      - uses: extractions/setup-just@v3
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: just,cargo-nextest
 
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -20,9 +22,28 @@ jobs:
         run: |
           just clean
 
-      - name: Run install
+      - name: Cache vcpkg-pkgs
+        id: cache-vcpkg-pkgs
+        uses: actions/cache@v4
+        with:
+          path: |
+            vcpkg_installed/x64-windows/bin
+            vcpkg_installed/x64-windows/include
+            vcpkg_installed/x64-windows/lib
+          key: ${{ runner.os }}-vcpkg-pkgs-${{ hashFiles('vcpkg.json') }}-build
+
+      - name: Run install-vcpkg-pkgs
+        if: steps.cache-vcpkg-pkgs.outputs.cache-hit != 'true'
         run: |
-          just install
+          just install-vcpkg-pkgs
+
+      - name: Run install-npm-pkgs
+        run: |
+          just install-npm-pkgs
+
+      - name: Run Build
+        run: |
+          just build
 
       - name: Run check
         run: |
