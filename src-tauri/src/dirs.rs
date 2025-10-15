@@ -9,6 +9,7 @@ const PROJECT_ORGANIZATION: &str = "";
 const PROJECT_APPLICATION: &str = "DuckIndex";
 
 pub fn get_project_dirs() -> PathBuf {
+    // TODO 开发时候单独目录
     if let Ok(val) = env::var("DUCKINDEX_TEST_DIR") {
         Path::new(&val).join("data")
     } else {

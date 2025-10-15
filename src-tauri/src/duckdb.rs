@@ -10,7 +10,6 @@ use crate::dirs::get_index_dir;
 
 use std::ops::{Deref, DerefMut};
 
-// 自定义的 Guard，用于在 Drop 时打印日志
 pub struct DebuggingMutexGuard<'a, T> {
     guard: MutexGuard<'a, T>,
     name: &'static str,
@@ -18,12 +17,10 @@ pub struct DebuggingMutexGuard<'a, T> {
 
 impl<T> Drop for DebuggingMutexGuard<'_, T> {
     fn drop(&mut self) {
-        // thread::sleep(self.release_sleep);
         debug!("释放了 Mutex {} 的锁", self.name);
     }
 }
 
-// 实现 Deref 和 DerefMut 以便能像普通 Guard 一样操作数据
 impl<T> Deref for DebuggingMutexGuard<'_, T> {
     type Target = T;
     fn deref(&self) -> &Self::Target {
@@ -37,8 +34,8 @@ impl<T> DerefMut for DebuggingMutexGuard<'_, T> {
     }
 }
 
-// 自定义的 Mutex
 pub struct DebuggingMutex<T> {
+    // 这个可以加优先级，优先处理关闭等任务
     mutex: Mutex<T>,
     name: &'static str,
 }
@@ -62,7 +59,6 @@ impl<T> DebuggingMutex<T> {
     }
 }
 
-// 全局静态变量
 static POOL: OnceCell<DebuggingMutex<Option<Pool<DuckdbConnectionManager>>>> = OnceCell::new();
 static WRITE_CONN: OnceCell<DebuggingMutex<Option<PooledConnection<DuckdbConnectionManager>>>> =
     OnceCell::new();
@@ -105,6 +101,7 @@ pub fn get_read_conn() -> Result<PooledConnection<DuckdbConnectionManager>> {
 
 pub fn get_write_conn(
 ) -> Result<DebuggingMutexGuard<'static, Option<PooledConnection<DuckdbConnectionManager>>>> {
+    // TODO 这里可以按照表加锁，提升性能
     debug!("尝试获取写锁...");
     let conn_lock = WRITE_CONN.get().expect("Write connection not initialized");
     let conn = conn_lock.lock();
