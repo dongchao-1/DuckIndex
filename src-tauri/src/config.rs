@@ -1,11 +1,12 @@
-use anyhow::Result;
+use anyhow::{anyhow, Result};
+use duckdb::params;
 use log::info;
-use rusqlite::params;
 use serde::{Deserialize, Serialize};
 use strum::Display;
 use strum::EnumString;
 
-use crate::sqlite::get_conn;
+use crate::duckdb::get_read_conn;
+use crate::duckdb::get_write_conn;
 
 pub struct Config {}
 
@@ -30,8 +31,8 @@ impl Config {
     where
         T: serde::de::DeserializeOwned,
     {
-        let conn = get_conn()?;
-        let value: String = conn.query_one(
+        let conn = get_read_conn()?;
+        let value: String = conn.query_row(
             "SELECT value FROM config WHERE key = ?1",
             params![key.to_string()],
             |row| row.get(0),
@@ -45,11 +46,16 @@ impl Config {
         T: ?Sized + Serialize,
     {
         let v = serde_json::to_string(value)?;
-        let conn = get_conn()?;
-        conn.execute(
+        let mut conn = get_write_conn()?;
+        let conn = conn
+            .as_mut()
+            .ok_or_else(|| anyhow!("Database write connection is not initialized"))?;
+        let tx = conn.transaction()?;
+        tx.execute(
             "UPDATE config SET value = ?2 WHERE key = ?1",
             params![key.to_string(), v],
         )?;
+        tx.commit()?;
         Ok(())
     }
 
@@ -107,46 +113,89 @@ impl Config {
 mod tests {
     use super::*;
     use crate::test::test_mod::TestEnv;
+    use rusty_fork::rusty_fork_test;
 
-    #[test]
-    fn test_get_set_key() {
-        let _env = TestEnv::new();
-        let test_value: Vec<String> = Config::get_key(&ConfigKey::IndexDirPaths).unwrap();
-        assert_eq!(test_value, Vec::<String>::new());
+    rusty_fork_test! {
+        #[test]
+        fn test_get_set_key() {
+            let _env = TestEnv::new();
+            let test_value: Vec<String> = Config::get_key(&ConfigKey::IndexDirPaths).unwrap();
+            assert_eq!(test_value, Vec::<String>::new());
 
-        Config::set_key(&ConfigKey::IndexDirPaths, &vec!["test_value".to_string()]).unwrap();
+            Config::set_key(&ConfigKey::IndexDirPaths, &vec!["test_value".to_string()]).unwrap();
 
-        let test_value: Vec<String> = Config::get_key(&ConfigKey::IndexDirPaths).unwrap();
-        assert_eq!(test_value, vec!["test_value".to_string()]);
-    }
+            let test_value: Vec<String> = Config::get_key(&ConfigKey::IndexDirPaths).unwrap();
+            assert_eq!(test_value, vec!["test_value".to_string()]);
+        }
 
-    #[test]
-    fn test_get_set_index_dir_paths() {
-        let _env = TestEnv::new();
-        let index_dir_paths = Config::get_index_dir_paths().unwrap();
-        assert_eq!(index_dir_paths, Vec::<String>::new());
+        #[test]
+        fn test_get_set_index_dir_paths() {
+            let _env = TestEnv::new();
+            let index_dir_paths = Config::get_index_dir_paths().unwrap();
+            assert_eq!(index_dir_paths, Vec::<String>::new());
 
-        let result = Config::set_index_dir_paths(vec![
-            "../test_data/indexer".into(),
-            "../test_data/reader".into(),
-        ]);
-        assert!(result.is_ok());
+            let result = Config::set_index_dir_paths(vec![
+                "../test_data/indexer".into(),
+                "../test_data/reader".into(),
+            ]);
+            assert!(result.is_ok());
 
-        let index_dir_paths = Config::get_index_dir_paths().unwrap();
-        assert_eq!(
-            index_dir_paths,
-            vec![
-                String::from("../test_data/indexer"),
-                String::from("../test_data/reader")
-            ]
-        );
-    }
+            let index_dir_paths = Config::get_index_dir_paths().unwrap();
+            assert_eq!(
+                index_dir_paths,
+                vec![
+                    String::from("../test_data/indexer"),
+                    String::from("../test_data/reader")
+                ]
+            );
+        }
 
-    #[test]
-    fn test_get_set_extension_whitelist() {
-        let _env = TestEnv::new_with_cleanup(false);
-        let extension_whitelist = vec![
-            ExtensionConfigTree {
+        #[test]
+        fn test_get_set_extension_whitelist() {
+            let _env = TestEnv::new();
+            let extension_whitelist = vec![
+                ExtensionConfigTree {
+                    label: "文档".into(),
+                    is_extension: false,
+                    children: Some(vec![
+                        ExtensionConfigTree {
+                            label: "docx".into(),
+                            is_extension: true,
+                            children: None,
+                            enabled: Some(true),
+                        },
+                        ExtensionConfigTree {
+                            label: "doc".into(),
+                            is_extension: true,
+                            children: None,
+                            enabled: Some(false),
+                        },
+                    ]),
+                    enabled: None,
+                },
+                ExtensionConfigTree {
+                    label: "数据".into(),
+                    is_extension: false,
+                    children: Some(vec![ExtensionConfigTree {
+                        label: "xlsx".into(),
+                        is_extension: true,
+                        children: None,
+                        enabled: Some(false),
+                    }]),
+                    enabled: None,
+                },
+            ];
+
+            Config::set_extension_whitelist(&extension_whitelist).unwrap();
+
+            let result = Config::get_extension_whitelist().unwrap();
+            assert_eq!(extension_whitelist, result);
+        }
+
+        #[test]
+        fn test_set_extension_enabled() {
+            let _env = TestEnv::new();
+            let extension_whitelist = vec![ExtensionConfigTree {
                 label: "文档".into(),
                 is_extension: false,
                 children: Some(vec![
@@ -154,87 +203,47 @@ mod tests {
                         label: "docx".into(),
                         is_extension: true,
                         children: None,
-                        enabled: Some(true),
+                        enabled: Some(false), // 初始为 false
                     },
                     ExtensionConfigTree {
                         label: "doc".into(),
                         is_extension: true,
                         children: None,
-                        enabled: Some(false),
+                        enabled: Some(true), // 初始为 true
                     },
                 ]),
                 enabled: None,
-            },
-            ExtensionConfigTree {
-                label: "数据".into(),
-                is_extension: false,
-                children: Some(vec![ExtensionConfigTree {
-                    label: "xlsx".into(),
-                    is_extension: true,
-                    children: None,
-                    enabled: Some(false),
-                }]),
-                enabled: None,
-            },
-        ];
+            }];
 
-        Config::set_extension_whitelist(&extension_whitelist).unwrap();
+            Config::set_extension_whitelist(&extension_whitelist).unwrap();
 
-        let result = Config::get_extension_whitelist().unwrap();
-        assert_eq!(extension_whitelist, result);
-    }
+            // 启用 docx
+            Config::set_extension_enabled("docx", true).unwrap();
+            let result = Config::get_extension_whitelist().unwrap();
+            let docx_node = result[0]
+                .children
+                .as_ref()
+                .unwrap()
+                .iter()
+                .find(|node| node.label == "docx")
+                .unwrap();
+            assert_eq!(docx_node.enabled, Some(true));
 
-    #[test]
-    fn test_set_extension_enabled() {
-        let _env = TestEnv::new_with_cleanup(false);
-        let extension_whitelist = vec![ExtensionConfigTree {
-            label: "文档".into(),
-            is_extension: false,
-            children: Some(vec![
-                ExtensionConfigTree {
-                    label: "docx".into(),
-                    is_extension: true,
-                    children: None,
-                    enabled: Some(false), // 初始为 false
-                },
-                ExtensionConfigTree {
-                    label: "doc".into(),
-                    is_extension: true,
-                    children: None,
-                    enabled: Some(true), // 初始为 true
-                },
-            ]),
-            enabled: None,
-        }];
+            // 禁用 doc
+            Config::set_extension_enabled("doc", false).unwrap();
+            let result = Config::get_extension_whitelist().unwrap();
+            let doc_node = result[0]
+                .children
+                .as_ref()
+                .unwrap()
+                .iter()
+                .find(|node| node.label == "doc")
+                .unwrap();
+            assert_eq!(doc_node.enabled, Some(false));
 
-        Config::set_extension_whitelist(&extension_whitelist).unwrap();
-
-        // 启用 docx
-        Config::set_extension_enabled("docx", true).unwrap();
-        let result = Config::get_extension_whitelist().unwrap();
-        let docx_node = result[0]
-            .children
-            .as_ref()
-            .unwrap()
-            .iter()
-            .find(|node| node.label == "docx")
-            .unwrap();
-        assert_eq!(docx_node.enabled, Some(true));
-
-        // 禁用 doc
-        Config::set_extension_enabled("doc", false).unwrap();
-        let result = Config::get_extension_whitelist().unwrap();
-        let doc_node = result[0]
-            .children
-            .as_ref()
-            .unwrap()
-            .iter()
-            .find(|node| node.label == "doc")
-            .unwrap();
-        assert_eq!(doc_node.enabled, Some(false));
-
-        // 测试不存在的扩展名
-        let error = Config::set_extension_enabled("nonexistent", true).unwrap_err();
-        assert!(error.to_string().contains("not found"));
+            // 测试不存在的扩展名
+            let error = Config::set_extension_enabled("nonexistent", true).unwrap_err();
+            assert!(error.to_string().contains("not found"));
+        }
     }
 }

@@ -1,13 +1,5 @@
 {
-    "rust-analyzer.check.command": "clippy",
-    "rust-analyzer.check.extraArgs": ["--all-features"],
-
-    "rust-analyzer.cargo.extraEnv": {
-        "LEPTONICA_INCLUDE_PATH": "${workspaceFolder}\\vcpkg\\installed\\x64-windows-static\\include",
-        "LEPTONICA_LINK_PATHS": "${workspaceFolder}\\vcpkg\\installed\\x64-windows-static\\lib",
-        "LEPTONICA_LINK_LIBS": "leptonica-1.85.0",
-        "TESSERACT_INCLUDE_PATHS": "${workspaceFolder}\\vcpkg\\installed\\x64-windows-static\\include",
-        "TESSERACT_LINK_PATHS": "${workspaceFolder}\\vcpkg\\installed\\x64-windows-static\\lib",
-        "TESSERACT_LINK_LIBS": "tesseract55",
-    },
+    "rust-analyzer.cargo.buildScripts.overrideCommand": ["just", "ra-check"],
+    "rust-analyzer.check.overrideCommand": ["just", "ra-check"],
+    "rust-analyzer.runnables.command": "just ra-runnables",
 }

@@ -8,6 +8,7 @@ use tauri::{async_runtime, RunEvent};
 use thiserror::Error;
 
 use crate::config::{Config, ExtensionConfigTree};
+use crate::duckdb::{check_or_init_db, close_pool, init_pool};
 use crate::indexer::IndexStatusStat;
 use crate::indexer::Indexer;
 use crate::indexer::SearchResultDirectory;
@@ -17,16 +18,15 @@ use crate::log::init_logger;
 use crate::monitor::add_watched_path;
 use crate::monitor::del_watched_path;
 use crate::monitor::get_monitor;
-use crate::sqlite::{check_or_init_db, close_pool, init_pool};
 use crate::worker::{TaskStatusStat, Worker};
 
 mod config;
 mod dirs;
+mod duckdb;
 mod indexer;
 mod log;
 mod monitor;
 mod reader;
-mod sqlite;
 mod test;
 mod utils;
 mod worker;
@@ -67,13 +67,13 @@ async fn add_index_path(path: String) -> TauriResult<()> {
         let new_path = Path::new(&path);
         add_watched_path(new_path)?;
 
-        let worker = Worker::new()?;
-        info!("开始索引目录: {}", new_path.display());
-        worker.submit_index_all_files(new_path)?;
-
         let mut paths = Config::get_index_dir_paths()?;
         paths.push(path.clone());
         Config::set_index_dir_paths(paths)?;
+
+        let worker = Worker::new()?;
+        info!("开始索引目录: {}", new_path.display());
+        worker.submit_index_all_files(new_path)?;
 
         Ok(())
     })

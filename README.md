@@ -29,7 +29,7 @@ DuckIndex 是一个基于Vue+Rust编写的本地文件内容索引和搜索工�
 
 ### 🔧 高级特性
 - **增量索引**: 智能监控文件变化，仅索引修改内容
-- **SQLite 存储**: 本地数据库存储，保证数据安全与查询性能
+- **DuckDB 存储**: 本地数据库存储，保证数据安全与查询性能
 
 ## 🏗️ 技术架构
 
@@ -41,14 +41,12 @@ DuckIndex 是一个基于Vue+Rust编写的本地文件内容索引和搜索工�
 ## 后端技术栈
 - **框架**: Tauri 2.x
 - **语言**: Rust
-- **数据库**: SQLite
+- **数据库**: DuckDB
 - **OCR 引擎**: Tesseract + Leptonica
 - **文档解析**: quick-xml, lopdf
 
 ## 构建系统
-- **任务管理**: cargo-make
 - **依赖管理**: vcpkg (C++ 依赖)
-- **测试框架**: cargo-nextest
 - **CI/CD**: GitHub Actions
 
 ## 💻 开发
@@ -63,16 +61,16 @@ choco install nodejs-lts --version=22.19.0 -y
 ```
 * 安装Visual Studio生成工具（安装C++依赖）：
 ```powershell
-choco install visualstudio2022enterprise --version=117.14.14 -y --package-parameters "--add Microsoft.VisualStudio.Component.VC.Tools.x86.x64 --add Microsoft.VisualStudio.Component.VC.CMake.Project --add Microsoft.VisualStudio.Component.VC.Llvm.Clang --add Microsoft.VisualStudio.Component.VC.Llvm.ClangToolset --add Microsoft.VisualStudio.Component.Windows11SDK.22621"
+choco install visualstudio2022enterprise --version=117.14.14 -y --package-parameters "--add Microsoft.VisualStudio.Component.VC.Tools.x86.x64 --add Microsoft.VisualStudio.Component.VC.CMake.Project --add Microsoft.VisualStudio.Component.VC.Llvm.Clang --add Microsoft.VisualStudio.Component.VC.Llvm.ClangToolset --add Microsoft.VisualStudio.Component.Windows11SDK.22621 --add Microsoft.VisualStudio.Component.Vcpkg"
 ```
-* 安装cargo-make: 
+* 安装just: 
 ```powershell
-cargo install cargo-make
+cargo install just
 ```
 
 ### 2. 安装依赖
 ```powershell
-cargo make install
+just install
 ```
 
 ### 3. 编写代码
@@ -80,25 +78,25 @@ cargo make install
 
 ### 4. 运行测试
 ```powershell
-cargo make test
-$env:RUST_BACKTRACE="full"; $env:DUCKINDEX_LOG_LEVEL="debug"; cargo make test
+just test
+just test-debug
 ```
 
 ### 5. 运行开发版本
 ```powershell
-cargo make dev
-$env:RUST_BACKTRACE="full"; $env:DUCKINDEX_LOG_LEVEL="debug"; cargo make dev
+just dev
+just dev-debug
 ```
 
 ### 6. 检查test、clippy、fmt
 ```powershell
-cargo make format
-cargo make check
+just format
+just check
 ```
 
 ### 7. 构建生产版本
 ```powershell
-cargo make release
+just release
 ```
 
 ### 重要路径

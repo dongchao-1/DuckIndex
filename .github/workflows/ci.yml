@@ -11,24 +11,50 @@ jobs:
     runs-on: windows-latest
 
     steps:
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: just
+
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install cargo-make
+      - name: Run clean
         run: |
-          cargo install cargo-make
+          just clean
 
-      - name: clean
-        run: |
-          cargo make clean
+      - name: Cache vcpkg-pkgs
+        id: cache-vcpkg-pkgs
+        uses: actions/cache@v4
+        with:
+          path: |
+            vcpkg_installed/x64-windows/bin
+            vcpkg_installed/x64-windows/include
+            vcpkg_installed/x64-windows/lib
+          key: ${{ runner.os }}-vcpkg-pkgs-${{ hashFiles('vcpkg.json') }}-build
 
-      - name: Run install
+      - name: Run install-vcpkg-pkgs
+        if: steps.cache-vcpkg-pkgs.outputs.cache-hit != 'true'
         run: |
-          cargo make install
+          just install-vcpkg-pkgs
+
+      - name: Run install-npm-pkgs
+        run: |
+          just install-npm-pkgs
+      
+      - run: rustup toolchain install stable --profile minimal
+      - name: Cache Rust Dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: 'src-tauri'
+
+      - name: Run Build
+        run: |
+          just build
 
       - name: Run check
         run: |
-          cargo make check
+          just check
 
-      - name: Run release
-        run: cargo make release
+      # - name: Run release
+      #   run: |
+      #     just release

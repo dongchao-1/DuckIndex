@@ -1,32 +1,30 @@
 use anyhow::Context;
 use anyhow::{anyhow, Result};
 use chrono::Local;
+use duckdb::params;
 use log::debug;
 use log::error;
 use log::info;
-use once_cell::sync::OnceCell;
-use rusqlite::params;
 use serde::Serialize;
 use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
 use std::str::FromStr;
-use std::sync::Mutex;
 use std::thread;
 use std::time::Duration;
 use strum::Display;
 use strum::EnumString;
 
+use crate::duckdb::{get_read_conn, get_write_conn};
 use crate::indexer::Indexer;
 use crate::reader::CompositeReader;
-use crate::sqlite::get_conn;
 
-static WORKER_LOCK: OnceCell<Mutex<()>> = OnceCell::new();
+// static WORKER_LOCK: OnceCell<Mutex<()>> = OnceCell::new();
 
-fn get_worker_lock() -> &'static Mutex<()> {
-    WORKER_LOCK.get_or_init(|| Mutex::new(()))
-}
+// fn get_worker_lock() -> &'static Mutex<()> {
+//     WORKER_LOCK.get_or_init(|| Mutex::new(()))
+// }
 
 pub struct Worker {
     indexer: Indexer,
@@ -67,8 +65,12 @@ pub struct TaskStatusStat {
 
 impl Worker {
     pub fn reset_running_tasks() -> Result<()> {
-        let conn = get_conn()?;
-        conn.execute(
+        let mut conn = get_write_conn()?;
+        let conn = conn
+            .as_mut()
+            .ok_or_else(|| anyhow!("Database write connection is not initialized"))?;
+        let tx = conn.transaction()?;
+        tx.execute(
             "UPDATE tasks SET status = ?1, updated_at = ?2, worker = null WHERE status = ?3",
             params![
                 TaskStatus::Pending.to_string(),
@@ -76,6 +78,7 @@ impl Worker {
                 TaskStatus::Running.to_string()
             ],
         )?;
+        tx.commit()?;
         Ok(())
     }
 
@@ -90,15 +93,19 @@ impl Worker {
         })
     }
 
-    fn add_task(&self, path_type: &PathType, path: &Path, task_type: &TaskType) -> Result<i64> {
-        let conn = get_conn()?;
-
+    fn add_task(&self, path_type: &PathType, path: &Path, task_type: &TaskType) -> Result<String> {
         let path = path
             .to_str()
             .with_context(|| format!("Invalid file path: {path:?}"))?
             .to_string();
         let now = Local::now().to_rfc3339();
-        let id = conn.query_one(
+
+        let mut conn = get_write_conn()?;
+        let conn = conn
+            .as_mut()
+            .ok_or_else(|| anyhow!("Database write connection is not initialized"))?;
+        let tx = conn.transaction()?;
+        let id = tx.query_row(
             r"INSERT INTO tasks (path_type, path, task_type, status, created_at, updated_at) 
                 VALUES (?1, ?2, ?3, ?4, ?5, ?6) ON CONFLICT(path_type, path) 
                 DO UPDATE SET updated_at = ?6 RETURNING id",
@@ -111,10 +118,11 @@ impl Worker {
                 now
             ],
             |row| {
-                let id = row.get::<_, i64>(0)?;
+                let id = row.get::<_, String>(0)?;
                 Ok(id)
             },
         )?;
+        tx.commit()?;
         Ok(id)
     }
 
@@ -266,8 +274,8 @@ impl Worker {
     }
 
     pub fn get_tasks_status(&self) -> Result<TaskStatusStat> {
-        let conn = get_conn()?;
-        let (pending, running) = conn.query_one(
+        let conn = get_read_conn()?;
+        let (pending, running) = conn.query_row(
             "SELECT COUNT(if(status = ?1, 1, NULL)), COUNT(if(status = ?2, 1, NULL)) FROM tasks",
             params![
                 TaskStatus::Pending.to_string(),
@@ -300,6 +308,7 @@ impl Worker {
             thread::Builder::new()
                 .name(format!("index-worker-thread-{i}"))
                 .spawn(move || {
+                    info!("索引线程 {i} 启动");
                     let worker = Worker::new().unwrap();
                     loop {
                         match worker.process_task() {
@@ -307,23 +316,25 @@ impl Worker {
                             Err(e) => {
                                 error!("处理任务失败: {e}");
                                 error!("{}", e.backtrace());
+                                panic!("进程退出!");
                             }
                         }
                     }
                 })
                 .unwrap();
+            // thread::sleep(Duration::from_millis(86)); // 错开启动时间，避免duckdb事务问题
         }
         Ok(())
     }
 
     pub fn process_task(&self) -> Result<()> {
         let task = {
-            let conn = get_conn()?;
-            let _lock = get_worker_lock()
-                .lock()
-                .map_err(|e| anyhow!("获取worker锁失败: {}", e))?;
-
-            conn.query_row(
+            let mut conn = get_write_conn()?;
+            let conn = conn
+                .as_mut()
+                .ok_or_else(|| anyhow!("Database write connection is not initialized"))?;
+            let tx = conn.transaction()?;
+            let row = tx.query_row(
                 r"UPDATE tasks
                 SET status = ?1, updated_at = ?2, worker = ?3
                 WHERE id = (
@@ -340,13 +351,15 @@ impl Worker {
                     TaskStatus::Pending.to_string()
                 ],
                 |row| {
-                    let id = row.get::<_, i64>(0)?;
+                    let id = row.get::<_, String>(0)?;
                     let path_type = row.get::<_, String>(1)?;
                     let path = row.get::<_, String>(2)?;
                     let task_type = row.get::<_, String>(3)?;
                     Ok((id, path_type, path, task_type))
                 },
-            )
+            );
+            tx.commit()?;
+            row
         };
 
         match task {
@@ -423,10 +436,15 @@ impl Worker {
                     }
                 }
                 debug!("处理任务完成: {}, {}, {}", id, path_type, path.display());
-                let conn = get_conn()?;
-                conn.execute("delete from tasks where id = ?", params![id])?;
+                let mut conn = get_write_conn()?;
+                let conn = conn
+                    .as_mut()
+                    .ok_or_else(|| anyhow!("Database write connection is not initialized"))?;
+                let tx = conn.transaction()?;
+                tx.execute("delete from tasks where id = ?", params![id])?;
+                tx.commit()?;
             }
-            Err(rusqlite::Error::QueryReturnedNoRows) => {
+            Err(duckdb::Error::QueryReturnedNoRows) => {
                 // 没有待处理的任务，休息1s
                 debug!("没有待处理的任务，休息1s");
                 thread::sleep(Duration::from_secs(1));
@@ -445,29 +463,13 @@ impl Worker {
 mod tests {
     use fs_extra::dir::{copy, CopyOptions};
     use fs_extra::file::write_all;
+    use rusty_fork::rusty_fork_test;
     use std::fs::{self, rename};
 
     use super::*;
     use crate::indexer::Indexer;
     use crate::test::test_mod::TestEnv;
     use crate::worker::Worker;
-
-    #[test]
-    fn test_add_task() {
-        let (_env, temp_test_data_worker) = prepare_test_data_worker();
-        let worker = Worker::new().unwrap();
-
-        let path_type = PathType::Directory;
-        let path = temp_test_data_worker.join("office");
-
-        let id = worker
-            .add_task(&path_type, &path, &TaskType::Index)
-            .unwrap();
-        let id2 = worker
-            .add_task(&path_type, &path, &TaskType::Index)
-            .unwrap();
-        assert_eq!(id, id2);
-    }
 
     fn prepare_test_data_worker() -> (TestEnv, PathBuf) {
         let env = TestEnv::new();
@@ -502,260 +504,279 @@ mod tests {
         (env, temp_test_data_worker)
     }
 
-    #[test]
-    fn test_index_all_files() {
-        let _ = prepare_test_data_worker();
-    }
+    rusty_fork_test! {
+        #[test]
+        fn test_add_task() {
+            let (_env, temp_test_data_worker) = prepare_test_data_worker();
+            let worker = Worker::new().unwrap();
 
-    #[test]
-    fn test_index_all_files_delete_file() {
-        let (_env, temp_test_data_worker) = prepare_test_data_worker();
-        let worker = Worker::new().unwrap();
-        let indexer = Indexer::new().unwrap();
+            let path_type = PathType::Directory;
+            let path = temp_test_data_worker.join("office");
 
-        fs::remove_file(temp_test_data_worker.join("office").join("test.docx")).unwrap();
-        worker
-            .submit_index_all_files(&temp_test_data_worker)
-            .unwrap();
-        let worker_status = worker.get_tasks_status().unwrap();
-        assert_eq!(worker_status.pending, 2);
-
-        let indexer_status = indexer.get_index_status().unwrap();
-        assert_eq!(indexer_status.directories, 2);
-        assert_eq!(indexer_status.files, 2);
-
-        for _ in 0..2 {
-            worker.process_task().unwrap();
+            let id = worker
+                .add_task(&path_type, &path, &TaskType::Index)
+                .unwrap();
+            let id2 = worker
+                .add_task(&path_type, &path, &TaskType::Index)
+                .unwrap();
+            assert_eq!(id, id2);
         }
 
-        let worker_status = worker.get_tasks_status().unwrap();
-        assert_eq!(worker_status.pending, 0);
-
-        let indexer_status = indexer.get_index_status().unwrap();
-        assert_eq!(indexer_status.directories, 2);
-        assert_eq!(indexer_status.files, 1);
-    }
-
-    #[test]
-    fn test_index_all_files_delete_directory() {
-        let (_env, temp_test_data_worker) = prepare_test_data_worker();
-        let worker = Worker::new().unwrap();
-        let indexer = Indexer::new().unwrap();
-
-        fs::remove_dir_all(temp_test_data_worker.join("office")).unwrap();
-        worker
-            .submit_index_all_files(&temp_test_data_worker)
-            .unwrap();
-        let worker_status = worker.get_tasks_status().unwrap();
-        assert_eq!(worker_status.pending, 2);
-
-        let indexer_status = indexer.get_index_status().unwrap();
-        assert_eq!(indexer_status.directories, 2);
-        assert_eq!(indexer_status.files, 2);
-
-        for _ in 0..2 {
-            worker.process_task().unwrap();
-        }
-        let worker_status = worker.get_tasks_status().unwrap();
-        assert_eq!(worker_status.pending, 0);
-
-        let indexer_status = indexer.get_index_status().unwrap();
-        assert_eq!(indexer_status.directories, 1);
-        assert_eq!(indexer_status.files, 1);
-    }
-
-    #[test]
-    fn test_index_all_files_add_file() {
-        let (_env, temp_test_data_worker) = prepare_test_data_worker();
-        let worker = Worker::new().unwrap();
-        let indexer = Indexer::new().unwrap();
-
-        write_all(
-            temp_test_data_worker.join("test_index_all_files_add_file.txt"),
-            "contents",
-        )
-        .unwrap();
-        worker
-            .submit_index_all_files(&temp_test_data_worker)
-            .unwrap();
-        let worker_status = worker.get_tasks_status().unwrap();
-        assert_eq!(worker_status.pending, 2);
-
-        for _ in 0..2 {
-            worker.process_task().unwrap();
+        #[test]
+        fn test_index_all_files() {
+            let _ = prepare_test_data_worker();
         }
 
-        let indexer_status = indexer.get_index_status().unwrap();
-        assert_eq!(indexer_status.directories, 2);
-        assert_eq!(indexer_status.files, 3);
-    }
+        #[test]
+        fn test_index_all_files_delete_file() {
+            let (_env, temp_test_data_worker) = prepare_test_data_worker();
+            let worker = Worker::new().unwrap();
+            let indexer = Indexer::new().unwrap();
 
-    #[test]
-    fn test_index_all_files_add_directory() {
-        let (_env, temp_test_data_worker) = prepare_test_data_worker();
-        let worker = Worker::new().unwrap();
-        let indexer = Indexer::new().unwrap();
+            fs::remove_file(temp_test_data_worker.join("office").join("test.docx")).unwrap();
+            worker
+                .submit_index_all_files(&temp_test_data_worker)
+                .unwrap();
+            let worker_status = worker.get_tasks_status().unwrap();
+            assert_eq!(worker_status.pending, 2);
 
-        fs::create_dir_all(temp_test_data_worker.join("new_dir")).unwrap();
-        worker
-            .submit_index_all_files(&temp_test_data_worker)
-            .unwrap();
-        let worker_status = worker.get_tasks_status().unwrap();
-        assert_eq!(worker_status.pending, 2);
+            let indexer_status = indexer.get_index_status().unwrap();
+            assert_eq!(indexer_status.directories, 2);
+            assert_eq!(indexer_status.files, 2);
 
-        for _ in 0..2 {
-            worker.process_task().unwrap();
+            for _ in 0..2 {
+                worker.process_task().unwrap();
+            }
+
+            let worker_status = worker.get_tasks_status().unwrap();
+            assert_eq!(worker_status.pending, 0);
+
+            let indexer_status = indexer.get_index_status().unwrap();
+            assert_eq!(indexer_status.directories, 2);
+            assert_eq!(indexer_status.files, 1);
         }
 
-        let indexer_status = indexer.get_index_status().unwrap();
-        assert_eq!(indexer_status.directories, 3);
-        assert_eq!(indexer_status.files, 2);
-    }
+        #[test]
+        fn test_index_all_files_delete_directory() {
+            let (_env, temp_test_data_worker) = prepare_test_data_worker();
+            let worker = Worker::new().unwrap();
+            let indexer = Indexer::new().unwrap();
 
-    #[test]
-    fn test_index_all_files_add_directory_and_file() {
-        let (_env, temp_test_data_worker) = prepare_test_data_worker();
-        let worker = Worker::new().unwrap();
-        let indexer = Indexer::new().unwrap();
+            fs::remove_dir_all(temp_test_data_worker.join("office")).unwrap();
+            worker
+                .submit_index_all_files(&temp_test_data_worker)
+                .unwrap();
+            let worker_status = worker.get_tasks_status().unwrap();
+            assert_eq!(worker_status.pending, 2);
 
-        fs::create_dir_all(temp_test_data_worker.join("new_dir")).unwrap();
-        write_all(
-            temp_test_data_worker
-                .join("new_dir")
-                .join("test_index_all_files_add_file.txt"),
-            "contents",
-        )
-        .unwrap();
-        worker
-            .submit_index_all_files(&temp_test_data_worker)
-            .unwrap();
-        let worker_status = worker.get_tasks_status().unwrap();
-        assert_eq!(worker_status.pending, 3);
+            let indexer_status = indexer.get_index_status().unwrap();
+            assert_eq!(indexer_status.directories, 2);
+            assert_eq!(indexer_status.files, 2);
 
-        for _ in 0..3 {
-            worker.process_task().unwrap();
+            for _ in 0..2 {
+                worker.process_task().unwrap();
+            }
+            let worker_status = worker.get_tasks_status().unwrap();
+            assert_eq!(worker_status.pending, 0);
+
+            let indexer_status = indexer.get_index_status().unwrap();
+            assert_eq!(indexer_status.directories, 1);
+            assert_eq!(indexer_status.files, 1);
         }
 
-        let indexer_status = indexer.get_index_status().unwrap();
-        assert_eq!(indexer_status.directories, 3);
-        assert_eq!(indexer_status.files, 3);
-    }
+        #[test]
+        fn test_index_all_files_add_file() {
+            let (_env, temp_test_data_worker) = prepare_test_data_worker();
+            let worker = Worker::new().unwrap();
+            let indexer = Indexer::new().unwrap();
 
-    #[test]
-    fn test_index_all_files_mod_file() {
-        let (_env, temp_test_data_worker) = prepare_test_data_worker();
-        let worker = Worker::new().unwrap();
-        let indexer = Indexer::new().unwrap();
-
-        write_all(temp_test_data_worker.join("1.txt"), "contents").unwrap();
-        worker
-            .submit_index_all_files(&temp_test_data_worker)
+            write_all(
+                temp_test_data_worker.join("test_index_all_files_add_file.txt"),
+                "contents",
+            )
             .unwrap();
-        let worker_status = worker.get_tasks_status().unwrap();
-        assert_eq!(worker_status.pending, 1);
+            worker
+                .submit_index_all_files(&temp_test_data_worker)
+                .unwrap();
+            let worker_status = worker.get_tasks_status().unwrap();
+            assert_eq!(worker_status.pending, 2);
 
-        worker.process_task().unwrap();
+            for _ in 0..2 {
+                worker.process_task().unwrap();
+            }
 
-        let indexer_status = indexer.get_index_status().unwrap();
-        assert_eq!(indexer_status.directories, 2);
-        assert_eq!(indexer_status.files, 2);
-    }
-
-    #[test]
-    fn test_index_all_files_mod_directory() {
-        let (_env, temp_test_data_worker) = prepare_test_data_worker();
-        let worker = Worker::new().unwrap();
-        let indexer = Indexer::new().unwrap();
-
-        rename(
-            temp_test_data_worker.join("office"),
-            temp_test_data_worker.join("new_office"),
-        )
-        .unwrap();
-        worker
-            .submit_index_all_files(&temp_test_data_worker)
-            .unwrap();
-        let worker_status = worker.get_tasks_status().unwrap();
-        assert_eq!(worker_status.pending, 4);
-
-        for _ in 0..4 {
-            worker.process_task().unwrap();
+            let indexer_status = indexer.get_index_status().unwrap();
+            assert_eq!(indexer_status.directories, 2);
+            assert_eq!(indexer_status.files, 3);
         }
 
-        let indexer_status = indexer.get_index_status().unwrap();
-        assert_eq!(indexer_status.directories, 2);
-        assert_eq!(indexer_status.files, 2);
-    }
+        #[test]
+        fn test_index_all_files_add_directory() {
+            let (_env, temp_test_data_worker) = prepare_test_data_worker();
+            let worker = Worker::new().unwrap();
+            let indexer = Indexer::new().unwrap();
 
-    #[test]
-    fn test_get_tasks_status() {
-        let _env = TestEnv::new();
-        let worker = Worker::new().unwrap();
-        worker
-            .submit_index_all_files(Path::new("../test_data/indexer"))
-            .unwrap();
+            fs::create_dir_all(temp_test_data_worker.join("new_dir")).unwrap();
+            worker
+                .submit_index_all_files(&temp_test_data_worker)
+                .unwrap();
+            let worker_status = worker.get_tasks_status().unwrap();
+            assert_eq!(worker_status.pending, 2);
 
-        let status = worker.get_tasks_status().unwrap();
-        assert_eq!(status.pending, 4);
-        assert_eq!(status.running, 0);
-        assert_eq!(status.running_tasks, Vec::<String>::new());
-    }
+            for _ in 0..2 {
+                worker.process_task().unwrap();
+            }
 
-    #[test]
-    fn test_process_task() {
-        let _env = TestEnv::new();
-        let worker = Worker::new().unwrap();
-        worker
-            .submit_index_all_files(&Path::new("../test_data/indexer").canonicalize().unwrap())
-            .unwrap();
-
-        let status = worker.get_tasks_status().unwrap();
-        assert_eq!(status.pending, 4);
-        assert_eq!(status.running, 0);
-        assert_eq!(status.running_tasks, Vec::<String>::new());
-
-        worker.process_task().unwrap();
-        let status = worker.get_tasks_status().unwrap();
-        assert_eq!(status.pending, 3);
-        assert_eq!(status.running, 0);
-        assert_eq!(status.running_tasks, Vec::<String>::new());
-
-        for _ in 0..3 {
-            worker.process_task().unwrap();
+            let indexer_status = indexer.get_index_status().unwrap();
+            assert_eq!(indexer_status.directories, 3);
+            assert_eq!(indexer_status.files, 2);
         }
-        let status = worker.get_tasks_status().unwrap();
-        assert_eq!(status.pending, 0);
-        assert_eq!(status.running, 0);
-        assert_eq!(status.running_tasks, Vec::<String>::new());
 
-        let _ = worker.process_task();
-        let status = worker.get_tasks_status().unwrap();
-        assert_eq!(status.pending, 0);
-        assert_eq!(status.running, 0);
-        assert_eq!(status.running_tasks, Vec::<String>::new());
-    }
+        #[test]
+        fn test_index_all_files_add_directory_and_file() {
+            let (_env, temp_test_data_worker) = prepare_test_data_worker();
+            let worker = Worker::new().unwrap();
+            let indexer = Indexer::new().unwrap();
 
-    #[test]
-    fn test_del_all_files() {
-        let (_env, temp_test_data_worker) = prepare_test_data_worker();
-        let worker = Worker::new().unwrap();
-        worker
-            .submit_delete_all_files(&temp_test_data_worker)
+            fs::create_dir_all(temp_test_data_worker.join("new_dir")).unwrap();
+            write_all(
+                temp_test_data_worker
+                    .join("new_dir")
+                    .join("test_index_all_files_add_file.txt"),
+                "contents",
+            )
             .unwrap();
-        let indexer = Indexer::new().unwrap();
-        let indexer_status = indexer.get_index_status().unwrap();
-        assert_eq!(indexer_status.directories, 2);
-        assert_eq!(indexer_status.files, 2);
+            worker
+                .submit_index_all_files(&temp_test_data_worker)
+                .unwrap();
+            let worker_status = worker.get_tasks_status().unwrap();
+            assert_eq!(worker_status.pending, 3);
 
-        worker.process_task().unwrap();
-        let status = worker.get_tasks_status().unwrap();
-        assert_eq!(status.pending, 0);
-        assert_eq!(status.running, 0);
-        assert_eq!(status.running_tasks, Vec::<String>::new());
+            for _ in 0..3 {
+                worker.process_task().unwrap();
+            }
 
-        let indexer_status = indexer.get_index_status().unwrap();
-        assert_eq!(indexer_status.directories, 0);
-        assert_eq!(indexer_status.files, 0);
-        assert_eq!(indexer_status.items, 0);
+            let indexer_status = indexer.get_index_status().unwrap();
+            assert_eq!(indexer_status.directories, 3);
+            assert_eq!(indexer_status.files, 3);
+        }
+
+        #[test]
+        fn test_index_all_files_mod_file() {
+            let (_env, temp_test_data_worker) = prepare_test_data_worker();
+            let worker = Worker::new().unwrap();
+            let indexer = Indexer::new().unwrap();
+
+            write_all(temp_test_data_worker.join("1.txt"), "contents").unwrap();
+            worker
+                .submit_index_all_files(&temp_test_data_worker)
+                .unwrap();
+            let worker_status = worker.get_tasks_status().unwrap();
+            assert_eq!(worker_status.pending, 1);
+
+            worker.process_task().unwrap();
+
+            let indexer_status = indexer.get_index_status().unwrap();
+            assert_eq!(indexer_status.directories, 2);
+            assert_eq!(indexer_status.files, 2);
+        }
+
+        #[test]
+        fn test_index_all_files_mod_directory() {
+            let (_env, temp_test_data_worker) = prepare_test_data_worker();
+            let worker = Worker::new().unwrap();
+            let indexer = Indexer::new().unwrap();
+
+            rename(
+                temp_test_data_worker.join("office"),
+                temp_test_data_worker.join("new_office"),
+            )
+            .unwrap();
+            worker
+                .submit_index_all_files(&temp_test_data_worker)
+                .unwrap();
+            let worker_status = worker.get_tasks_status().unwrap();
+            assert_eq!(worker_status.pending, 4);
+
+            for _ in 0..4 {
+                worker.process_task().unwrap();
+            }
+
+            let indexer_status = indexer.get_index_status().unwrap();
+            assert_eq!(indexer_status.directories, 2);
+            assert_eq!(indexer_status.files, 2);
+        }
+
+        #[test]
+        fn test_get_tasks_status() {
+            let _env = TestEnv::new();
+            let worker = Worker::new().unwrap();
+            worker
+                .submit_index_all_files(Path::new("../test_data/indexer"))
+                .unwrap();
+
+            let status = worker.get_tasks_status().unwrap();
+            assert_eq!(status.pending, 4);
+            assert_eq!(status.running, 0);
+            assert_eq!(status.running_tasks, Vec::<String>::new());
+        }
+
+        #[test]
+        fn test_process_task() {
+            let _env = TestEnv::new();
+            let worker = Worker::new().unwrap();
+            worker
+                .submit_index_all_files(&Path::new("../test_data/indexer").canonicalize().unwrap())
+                .unwrap();
+
+            let status = worker.get_tasks_status().unwrap();
+            assert_eq!(status.pending, 4);
+            assert_eq!(status.running, 0);
+            assert_eq!(status.running_tasks, Vec::<String>::new());
+
+            worker.process_task().unwrap();
+            let status = worker.get_tasks_status().unwrap();
+            assert_eq!(status.pending, 3);
+            assert_eq!(status.running, 0);
+            assert_eq!(status.running_tasks, Vec::<String>::new());
+
+            for _ in 0..3 {
+                worker.process_task().unwrap();
+            }
+            let status = worker.get_tasks_status().unwrap();
+            assert_eq!(status.pending, 0);
+            assert_eq!(status.running, 0);
+            assert_eq!(status.running_tasks, Vec::<String>::new());
+
+            let _ = worker.process_task();
+            let status = worker.get_tasks_status().unwrap();
+            assert_eq!(status.pending, 0);
+            assert_eq!(status.running, 0);
+            assert_eq!(status.running_tasks, Vec::<String>::new());
+        }
+
+        #[test]
+        fn test_del_all_files() {
+            let (_env, temp_test_data_worker) = prepare_test_data_worker();
+            let worker = Worker::new().unwrap();
+            worker
+                .submit_delete_all_files(&temp_test_data_worker)
+                .unwrap();
+            let indexer = Indexer::new().unwrap();
+            let indexer_status = indexer.get_index_status().unwrap();
+            assert_eq!(indexer_status.directories, 2);
+            assert_eq!(indexer_status.files, 2);
+
+            worker.process_task().unwrap();
+            let status = worker.get_tasks_status().unwrap();
+            assert_eq!(status.pending, 0);
+            assert_eq!(status.running, 0);
+            assert_eq!(status.running_tasks, Vec::<String>::new());
+
+            let indexer_status = indexer.get_index_status().unwrap();
+            assert_eq!(indexer_status.directories, 0);
+            assert_eq!(indexer_status.files, 0);
+            assert_eq!(indexer_status.items, 0);
+        }
     }
 }

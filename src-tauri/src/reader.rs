@@ -438,123 +438,126 @@ impl OcrReader {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rusty_fork::rusty_fork_test;
 
     const TEST_DATA_DIR: &str = "../test_data/reader";
 
-    #[test]
-    fn test_composite_reader() {
-        let reader = CompositeReader::new().unwrap();
-        let items = reader
-            .read(&Path::new(TEST_DATA_DIR).join("test.txt"))
-            .unwrap();
-        assert_eq!(items.len(), 4);
-    }
+    rusty_fork_test! {
+        #[test]
+        fn test_composite_reader() {
+            let reader = CompositeReader::new().unwrap();
+            let items = reader
+                .read(&Path::new(TEST_DATA_DIR).join("test.txt"))
+                .unwrap();
+            assert_eq!(items.len(), 4);
+        }
 
-    #[test]
-    fn test_composite_unknown_extension() {
-        let reader = CompositeReader::new().unwrap();
-        let result = reader
-            .read(&Path::new(TEST_DATA_DIR).join("test.xyz"))
-            .unwrap();
-        assert_eq!(result.len(), 0);
-    }
+        #[test]
+        fn test_composite_unknown_extension() {
+            let reader = CompositeReader::new().unwrap();
+            let result = reader
+                .read(&Path::new(TEST_DATA_DIR).join("test.xyz"))
+                .unwrap();
+            assert_eq!(result.len(), 0);
+        }
 
-    #[test]
-    fn test_txt_reader() {
-        let reader = TxtReader;
-        assert_eq!(reader.supports(), vec!["txt", "md", "markdown"]);
-        let items = reader
-            .read(&Path::new(TEST_DATA_DIR).join("test.txt"))
-            .unwrap();
-        assert_eq!(items.len(), 4);
-    }
+        #[test]
+        fn test_txt_reader() {
+            let reader = TxtReader;
+            assert_eq!(reader.supports(), vec!["txt", "md", "markdown"]);
+            let items = reader
+                .read(&Path::new(TEST_DATA_DIR).join("test.txt"))
+                .unwrap();
+            assert_eq!(items.len(), 4);
+        }
 
-    #[test]
-    fn test_docx_reader() {
-        let reader = DocxReader;
-        assert_eq!(reader.supports(), vec!["docx"]);
-        let items = reader
-            .read(&Path::new(TEST_DATA_DIR).join("office/test.docx"))
-            .unwrap();
-        // println!("Items: {:?}", items);
-        assert_eq!(items.len(), 10);
-    }
+        #[test]
+        fn test_docx_reader() {
+            let reader = DocxReader;
+            assert_eq!(reader.supports(), vec!["docx"]);
+            let items = reader
+                .read(&Path::new(TEST_DATA_DIR).join("office/test.docx"))
+                .unwrap();
+            // println!("Items: {:?}", items);
+            assert_eq!(items.len(), 10);
+        }
 
-    #[test]
-    fn test_pptx_reader() {
-        let reader = PptxReader;
-        assert_eq!(reader.supports(), vec!["pptx"]);
-        let items = reader
-            .read(&Path::new(TEST_DATA_DIR).join("office/test.pptx"))
-            .unwrap();
-        // println!("Items: {:?}", items);
-        assert_eq!(items.len(), 5);
-    }
+        #[test]
+        fn test_pptx_reader() {
+            let reader = PptxReader;
+            assert_eq!(reader.supports(), vec!["pptx"]);
+            let items = reader
+                .read(&Path::new(TEST_DATA_DIR).join("office/test.pptx"))
+                .unwrap();
+            // println!("Items: {:?}", items);
+            assert_eq!(items.len(), 5);
+        }
 
-    #[test]
-    fn test_pdf_reader() {
-        let reader = PdfReader;
-        assert_eq!(reader.supports(), vec!["pdf"]);
-        let items = reader
-            .read(&Path::new(TEST_DATA_DIR).join("test.pdf"))
-            .unwrap();
-        // println!("Items: {:?}", items);
-        assert_eq!(items.len(), 1);
-    }
+        #[test]
+        fn test_pdf_reader() {
+            let reader = PdfReader;
+            assert_eq!(reader.supports(), vec!["pdf"]);
+            let items = reader
+                .read(&Path::new(TEST_DATA_DIR).join("test.pdf"))
+                .unwrap();
+            // println!("Items: {:?}", items);
+            assert_eq!(items.len(), 1);
+        }
 
-    #[test]
-    fn test_xlsx_reader() {
-        let reader = XlsxReader;
-        assert_eq!(reader.supports(), vec!["xlsx"]);
+        #[test]
+        fn test_xlsx_reader() {
+            let reader = XlsxReader;
+            assert_eq!(reader.supports(), vec!["xlsx"]);
 
-        let xlsx_path = Path::new(TEST_DATA_DIR).join("office/test.xlsx");
-        let items = reader.read(&xlsx_path).unwrap();
-        // println!("XLSX Items: {:?}", items);
-        assert_eq!(items.len(), 7);
-    }
+            let xlsx_path = Path::new(TEST_DATA_DIR).join("office/test.xlsx");
+            let items = reader.read(&xlsx_path).unwrap();
+            // println!("XLSX Items: {:?}", items);
+            assert_eq!(items.len(), 7);
+        }
 
-    #[test]
-    fn test_ocr_reader() {
-        const TEST_DATA_PIC_DIR: &str = "../test_data/reader/pic";
+        #[test]
+        fn test_ocr_reader() {
+            const TEST_DATA_PIC_DIR: &str = "../test_data/reader/pic";
 
-        let reader = OcrReader;
-        assert_eq!(
-            reader.supports(),
-            vec!["jpg", "jpeg", "png", "tif", "tiff", "gif", "webp"]
-        );
+            let reader = OcrReader;
+            assert_eq!(
+                reader.supports(),
+                vec!["jpg", "jpeg", "png", "tif", "tiff", "gif", "webp"]
+            );
 
-        let items = reader
-            .read(&Path::new(TEST_DATA_PIC_DIR).join("test.jpg"))
-            .unwrap();
-        // println!("OCR Items: {:?}", items);
-        assert_eq!(items.len(), 6);
-        let items = reader
-            .read(&Path::new(TEST_DATA_PIC_DIR).join("test.jpeg"))
-            .unwrap();
-        assert_eq!(items.len(), 6);
+            let items = reader
+                .read(&Path::new(TEST_DATA_PIC_DIR).join("test.jpg"))
+                .unwrap();
+            // println!("OCR Items: {:?}", items);
+            assert_eq!(items.len(), 6);
+            let items = reader
+                .read(&Path::new(TEST_DATA_PIC_DIR).join("test.jpeg"))
+                .unwrap();
+            assert_eq!(items.len(), 6);
 
-        let items = reader
-            .read(&Path::new(TEST_DATA_PIC_DIR).join("test.png"))
-            .unwrap();
-        assert_eq!(items.len(), 6);
+            let items = reader
+                .read(&Path::new(TEST_DATA_PIC_DIR).join("test.png"))
+                .unwrap();
+            assert_eq!(items.len(), 6);
 
-        let items = reader
-            .read(&Path::new(TEST_DATA_PIC_DIR).join("test.tif"))
-            .unwrap();
-        assert_eq!(items.len(), 6);
-        let items = reader
-            .read(&Path::new(TEST_DATA_PIC_DIR).join("test.tiff"))
-            .unwrap();
-        assert_eq!(items.len(), 6);
+            let items = reader
+                .read(&Path::new(TEST_DATA_PIC_DIR).join("test.tif"))
+                .unwrap();
+            assert_eq!(items.len(), 6);
+            let items = reader
+                .read(&Path::new(TEST_DATA_PIC_DIR).join("test.tiff"))
+                .unwrap();
+            assert_eq!(items.len(), 6);
 
-        let items = reader
-            .read(&Path::new(TEST_DATA_PIC_DIR).join("test.gif"))
-            .unwrap();
-        assert_eq!(items.len(), 6);
+            let items = reader
+                .read(&Path::new(TEST_DATA_PIC_DIR).join("test.gif"))
+                .unwrap();
+            assert_eq!(items.len(), 6);
 
-        let items = reader
-            .read(&Path::new(TEST_DATA_PIC_DIR).join("test.webp"))
-            .unwrap();
-        assert_eq!(items.len(), 6);
+            let items = reader
+                .read(&Path::new(TEST_DATA_PIC_DIR).join("test.webp"))
+                .unwrap();
+            assert_eq!(items.len(), 6);
+        }
     }
 }

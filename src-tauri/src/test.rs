@@ -1,6 +1,6 @@
 #[cfg(test)]
 pub mod test_mod {
-    use crate::{setup_backend, sqlite::close_pool};
+    use crate::{duckdb::close_pool, setup_backend};
     use chrono::Local;
     use std::env;
     use tempfile::Builder;
@@ -38,42 +38,43 @@ pub mod test_mod {
     impl Drop for TestEnv {
         fn drop(&mut self) {
             close_pool();
-            // 这里会自动清理 temp_dir
-            // 因为 TempDir 实现了 Drop，会自动删除临时目录
         }
     }
 
     #[cfg(test)]
     mod temp_dir_tests {
         use super::*;
+        use rusty_fork::rusty_fork_test;
 
-        #[test]
-        fn test_temp_dir_cleanup() {
-            let temp_path;
-            {
-                let test_env = TestEnv::new();
-                temp_path = test_env.temp_dir.path().to_path_buf();
+        rusty_fork_test! {
+            #[test]
+            fn test_temp_dir_cleanup() {
+                let temp_path;
+                {
+                    let test_env = TestEnv::new();
+                    temp_path = test_env.temp_dir.path().to_path_buf();
 
-                // println!("临时目录路径: {}", temp_path.display());
-                assert!(temp_path.exists(), "临时目录应该存在");
+                    // println!("临时目录路径: {}", temp_path.display());
+                    assert!(temp_path.exists(), "临时目录应该存在");
+                }
+
+                assert!(!temp_path.exists(), "临时目录应该被清理");
             }
 
-            assert!(!temp_path.exists(), "临时目录应该被清理");
-        }
+            #[test]
+            #[ignore]
+            fn test_temp_dir_no_cleanup() {
+                let temp_path;
+                {
+                    let test_env = TestEnv::new_with_cleanup(false);
+                    temp_path = test_env.temp_dir.path().to_path_buf();
 
-        #[test]
-        #[ignore]
-        fn test_temp_dir_no_cleanup() {
-            let temp_path;
-            {
-                let test_env = TestEnv::new_with_cleanup(false);
-                temp_path = test_env.temp_dir.path().to_path_buf();
+                    // println!("临时目录路径: {:?}", temp_path.display());
+                    assert!(temp_path.exists(), "临时目录应该存在");
+                }
 
-                // println!("临时目录路径: {:?}", temp_path.display());
-                assert!(temp_path.exists(), "临时目录应该存在");
+                assert!(temp_path.exists(), "临时目录不应该被清理");
             }
-
-            assert!(temp_path.exists(), "临时目录不应该被清理");
         }
     }
 }
