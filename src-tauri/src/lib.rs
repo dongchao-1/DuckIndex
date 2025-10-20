@@ -241,6 +241,7 @@ pub fn run() {
         .expect("error while running tauri application")
         .run(|_app_handle, event| {
             if let RunEvent::Exit = event {
+                // TODO 关闭时候最小化
                 close_pool();
             }
         });
